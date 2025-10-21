@@ -12,8 +12,8 @@ from flask import Flask, request, jsonify, send_from_directory, render_template,
 from flask_cors import CORS
 from dotenv import load_dotenv
 from typing import Optional
-
-# 导入我们之前设计的数据库操作模块
+from moviepy import VideoFileClip, concatenate_videoclips,ImageClip
+# 导入之前设计的数据库操作模块
 import database
 
 # --- 1. 初始化与配置 ---
@@ -37,7 +37,8 @@ os.makedirs(COMFYUI_INPUT_PATH, exist_ok=True)
 IMAGE_DIR = os.path.join(BASE_COMFYUI_PATH, "output")
 # 视频目录
 VIDEO_DIR = os.path.join(IMAGE_DIR, "video")
-
+STITCHED_OUTPUT_FOLDER = os.path.join(os.path.dirname(__file__), 'stitched_videos') # 存放拼接结果
+os.makedirs(STITCHED_OUTPUT_FOLDER, exist_ok=True)
 
 # --- 2. 核心辅助函数 ---
 
@@ -454,6 +455,124 @@ def create_node():
     return jsonify(updated_tree), 201
 
 
+# --- 【核心修改】视频拼接 API 接口 (使用 moviepy) ---
+@app.route('/api/stitch', methods=['POST'])
+def stitch_videos():
+    data = request.get_json()
+    clips_data = data.get('clips') # <-- 接收包含类型的数据
+
+    if not clips_data or len(clips_data) < 1: # 至少需要一个片段
+        return jsonify({"error": "需要至少一个片段路径"}), 400
+
+    moviepy_clips = [] # 用于存放 VideoFileClip 或 ImageClip 对象
+    default_image_duration = 3 # 图片作为视频片段的默认时长（秒）
+    target_fps = 24 # 目标输出帧率 (可以根据需要调整)
+
+    try:
+        # --- 1. 将相对路径转换为绝对路径并创建 MoviePy Clip 对象 ---
+        for clip_info in clips_data:
+            relative_path = clip_info.get('path')
+            clip_type = clip_info.get('type') # 'image' 或 'video'
+
+            if not relative_path or not clip_type:
+                raise ValueError(f"片段信息不完整: {clip_info}")
+
+            # 解析相对路径
+            parsed_url = urllib.parse.urlparse(relative_path)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            filename = query_params.get('filename', [None])[0]
+            subfolder = query_params.get('subfolder', [''])[0]
+            if not filename:
+                raise ValueError(f"无法从路径解析文件名: {relative_path}")
+
+            # 构建绝对路径
+            # 【重要】需要区分图片和视频可能在不同的目录下
+            if clip_type == 'video':
+                # 假设视频都在 output/video 子目录下
+                full_path = os.path.join(COMFYUI_OUTPUT_PATH, 'video', filename)
+                
+            else: # 图片
+                 # 假设图片直接在 output 目录下
+                full_path = os.path.join(COMFYUI_OUTPUT_PATH, filename)
+                
+
+            if not os.path.exists(full_path):
+                # 尝试去掉 subfolder 查找，兼容旧数据或不同工作流
+                full_path_alt = os.path.join(COMFYUI_OUTPUT_PATH, filename)
+                if not os.path.exists(full_path_alt):
+                   raise FileNotFoundError(f"媒体文件未找到: {full_path} 或 {full_path_alt}")
+                else:
+                    full_path = full_path_alt # 使用备用路径
+
+
+            # 创建 MoviePy Clip 对象
+            if clip_type == 'video':
+                print(f"加载视频: {full_path}")
+                video_clip = VideoFileClip(full_path)
+                # 可选：统一设置帧率，避免拼接问题
+                # if video_clip.fps != target_fps:
+                #     print(f"  调整帧率从 {video_clip.fps} 到 {target_fps}")
+                #     video_clip = video_clip.set_fps(target_fps)
+                moviepy_clips.append(video_clip)
+            else: # 图片
+                print(f"加载图片并创建为 {default_image_duration} 秒片段: {full_path}")
+                # 【核心修正】先创建 ImageClip，然后直接设置 duration 属性
+                image_clip = ImageClip(full_path)
+                image_clip.duration = default_image_duration
+                # 【核心修正】设置 fps 属性 (注意：是 fps 不是 set_fps 方法)
+                image_clip.fps = target_fps
+                moviepy_clips.append(image_clip)
+
+        if not moviepy_clips:
+             raise ValueError("未能成功加载任何媒体片段")
+
+        # --- 2. 使用 moviepy 拼接视频 ---
+        print("使用 moviepy 拼接片段...")
+        final_clip = concatenate_videoclips(moviepy_clips, method="compose") # compose 更稳定
+
+        # --- 3. 写入输出文件 ---
+        output_filename = f"stitched_{uuid.uuid4()}.mp4"
+        output_path_absolute = os.path.join(STITCHED_OUTPUT_FOLDER, output_filename)
+        print(f"写入拼接后的视频到: {output_path_absolute}")
+        # 确保输出有统一的帧率和兼容的编码
+        final_clip.write_videofile(
+            output_path_absolute,
+            codec="libx264",    # H.264 编码，兼容性好
+            audio_codec="aac",  # AAC 音频编码
+            fps=target_fps,     # 指定输出帧率
+            threads=4,          # 使用多线程加速
+            preset='medium'     # 速度与质量平衡
+        )
+
+        # --- 4. 关闭所有打开的文件句柄 ---
+        for clip in moviepy_clips:
+            clip.close()
+        final_clip.close()
+
+        # --- 5. 返回结果 URL ---
+        output_url = f"/stitched/{output_filename}"
+        print(f"拼接完成，访问 URL: {output_url}")
+        return jsonify({"output_url": output_url}), 200
+
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except ValueError as e:
+         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print(f"Moviepy 处理过程中发生错误: {type(e).__name__} - {e}")
+        # 清理 clip 对象
+        for clip in moviepy_clips:
+            try: clip.close()
+            except: pass
+        return jsonify({"error": f"视频拼接失败: {e}"}), 500
+
+# --- 【不变】用于下载/访问拼接后视频的路由 ---
+@app.route('/stitched/<filename>')
+def download_stitched_video(filename):
+    try:
+        return send_from_directory(STITCHED_OUTPUT_FOLDER, filename, as_attachment=False)
+    except FileNotFoundError:
+        abort(404)
 
 @app.route('/api/database/download', methods=['GET'])
 def download_database():

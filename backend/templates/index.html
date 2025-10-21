@@ -65,6 +65,44 @@
             display: block;
             margin: 0 auto;
         }
+        .clip-item {
+            position: relative;
+            cursor: grab;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 2px;
+            background: white;
+            transition: transform 0.2s;
+        }
+        .clip-item img, .clip-item video { /* 统一用img显示缩略图，简化 */
+            width: 100px;
+            height: 60px;
+            object-fit: cover;
+            display: block;
+        }
+        .clip-item .remove-btn {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: rgba(239, 68, 68, 0.8); /* Red-500 with opacity */
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 12px;
+            line-height: 16px;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid white;
+        }
+        .clip-item.dragging { /* 拖拽时的样式 */
+            opacity: 0.5;
+            transform: scale(1.05);
+        }
+        .drag-over { /* 拖放目标区域的样式 */
+            border-style: solid;
+            border-color: #3b82f6; /* Blue-500 */
+        }
         .loader { border-top-color: #3498db; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
@@ -125,6 +163,21 @@
                 </div>
             </div>
         </main>
+        <div class="container mx-auto p-4 mt-8">
+            <div class="bg-white rounded shadow p-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">视频拼接序列</h2>
+                <div id="stitching-panel" class="bg-gray-100 p-4 rounded border border-dashed border-gray-300 min-h-[150px]">
+                    <div id="clips-container" class="flex flex-wrap gap-3">
+                        <span id="clips-placeholder" class="text-gray-500 italic">从上方历史树中添加视频片段到此区域...</span>
+                    </div>
+                </div>
+                <button id="stitch-button" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:bg-gray-400">
+                    拼接视频
+                </button>
+                <div id="stitch-result" class="mt-3 text-center"></div>
+            </div>
+        </div>
+
     </div>
 
     <div id="preview-overlay" style="display:none;"></div>
@@ -147,6 +200,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const buttonText = document.getElementById('button-text');
     const buttonLoader = document.getElementById('button-loader');
 
+    //视频拼接
+    const clipsContainer = document.getElementById('clips-container');
+    const clipsPlaceholder = document.getElementById('clips-placeholder');
+    const stitchButton = document.getElementById('stitch-button');
+    const stitchResult = document.getElementById('stitch-result');
+
+    let stitchingClips = []; // 存储待拼接的片段信息 { nodeId, mediaPath, thumbnailUrl }
+    let draggedClipIndex = null; // 用于拖拽
+
+
+
     let selectedParentNodeId = null;
     let rootNodeId = null;
     let allNodes = [];
@@ -158,6 +222,171 @@ document.addEventListener('DOMContentLoaded', () => {
     function makeFullUrl(path) { if (!path) return null; if (path.startsWith('http://') || path.startsWith('https://')) return path; const cleanPath = path.startsWith('/') ? path : '/' + path; return COMFYUI_URL + cleanPath; }
     function openPreview(mediaUrl, type) { overlay.innerHTML = ''; overlay.style.display = 'flex'; overlay.className = 'overlay'; const modal = document.createElement('div'); modal.className = 'modal'; const closeBtn = document.createElement('div'); closeBtn.style.textAlign = 'right'; closeBtn.innerHTML = '<button class="px-3 py-1 bg-gray-200 rounded">关闭</button>'; closeBtn.querySelector('button').addEventListener('click', closePreview); modal.appendChild(closeBtn); if (type === 'video') { const v = document.createElement('video'); v.src = mediaUrl; v.controls = true; v.autoplay = true; modal.appendChild(v); } else { const img = document.createElement('img'); img.src = mediaUrl; img.alt = 'preview'; modal.appendChild(img); } overlay.appendChild(modal); overlay.addEventListener('click', (e) => { if (e.target === overlay) closePreview(); }); }
     function closePreview() { overlay.style.display = 'none'; overlay.innerHTML = ''; }
+
+    // --- 【新增】片段处理相关函数 ---
+
+    // 添加片段到拼接列表 (增加 isVideo 标记)
+    function addClipToStitch(nodeData, type) {
+        if (!nodeData.media || !nodeData.media.rawPath) return;
+        if (stitchingClips.some(clip => clip.nodeId === nodeData.id)) {
+            alert('该片段已在拼接序列中。');
+            return;
+        }
+        // 【修正】判断并存储是否为视频
+        stitchingClips.push({
+            nodeId: nodeData.id,
+            mediaPath: nodeData.media.rawPath,
+            thumbnailUrl: nodeData.media.url,
+            type: type // <-- 存储片段类型 ('image' 或 'video')
+        });
+
+        renderStitchingPanel();
+    }
+
+    // 移除片段
+    function removeClipFromStitch(index) {
+        stitchingClips.splice(index, 1);
+        renderStitchingPanel();
+    }
+
+    // 【修正】渲染拼接面板UI (根据 type 创建 video 或 img)
+    function renderStitchingPanel() {
+        clipsContainer.innerHTML = '';
+        if (stitchingClips.length === 0) {
+            clipsPlaceholder.style.display = 'block';
+            stitchButton.disabled = true;
+        } else {
+            clipsPlaceholder.style.display = 'none';
+            stitchButton.disabled = false;
+            stitchingClips.forEach((clip, index) => {
+                const item = document.createElement('div');
+                item.className = 'clip-item';
+                item.draggable = true;
+                item.dataset.index = index;
+
+                let mediaElement;
+                if (clip.type === 'video') { // <-- 使用存储的类型判断
+                    mediaElement = document.createElement('video');
+                    mediaElement.autoplay = true;
+                    mediaElement.loop = true;
+                    mediaElement.muted = true;
+                    mediaElement.playsInline = true;
+                    mediaElement.preload = 'metadata';
+                } else { // 图片
+                    mediaElement = document.createElement('img');
+                    mediaElement.alt = `Clip ${index + 1}`;
+                }
+                mediaElement.src = clip.thumbnailUrl;
+                mediaElement.className = 'thumb';
+                item.appendChild(mediaElement);
+
+                const removeBtn = document.createElement('span');
+                removeBtn.className = 'remove-btn';
+                removeBtn.innerHTML = '×';
+                removeBtn.onclick = (e) => { e.stopPropagation(); removeClipFromStitch(index); };
+                item.appendChild(removeBtn);
+
+                item.addEventListener('dragstart', handleDragStart);
+                item.addEventListener('dragover', handleDragOver);
+                item.addEventListener('dragleave', handleDragLeave);
+                item.addEventListener('drop', handleDrop);
+                item.addEventListener('dragend', handleDragEnd);
+
+                clipsContainer.appendChild(item);
+            });
+        }
+    }
+
+    // 拖拽处理函数 (加固逻辑)
+    function handleDragStart(e) {
+        // 确保设置数据，某些浏览器可能需要
+        e.dataTransfer.setData('text/plain', this.dataset.index);
+        e.dataTransfer.effectAllowed = 'move';
+        draggedClipIndex = parseInt(this.dataset.index);
+        // 使用 setTimeout 延迟添加 dragging 类，避免影响拖拽图像
+        setTimeout(() => this.classList.add('dragging'), 0);
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        this.classList.add('drag-over');
+    }
+
+    function handleDragLeave(e) {
+        this.classList.remove('drag-over');
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        this.classList.remove('drag-over');
+        // 从事件数据中获取拖拽源索引（更可靠）
+        // const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        // 如果上面获取不到，再用全局变量 (兼容性)
+        const sourceIndex = (draggedClipIndex !== null) ? draggedClipIndex : parseInt(e.dataTransfer.getData('text/plain'));
+        const targetIndex = parseInt(this.dataset.index);
+
+        if (isNaN(sourceIndex) || isNaN(targetIndex) || sourceIndex === targetIndex) {
+             console.warn("拖拽索引无效或目标与源相同");
+             // 确保清理 draggedClipIndex
+             draggedClipIndex = null;
+             // 强制移除 dragging 样式，以防万一
+             document.querySelectorAll('.clip-item.dragging').forEach(el => el.classList.remove('dragging'));
+             return;
+        }
+
+        // 重新排序数组
+        const itemToMove = stitchingClips.splice(sourceIndex, 1)[0];
+        if (itemToMove) {
+             stitchingClips.splice(targetIndex, 0, itemToMove);
+        } else {
+             console.error("未能找到要移动的片段");
+        }
+
+        // 重置拖拽索引并重新渲染
+        draggedClipIndex = null;
+        renderStitchingPanel();
+    }
+
+    function handleDragEnd(e) {
+        // 使用 try...finally 确保样式被移除
+        try {
+            // 清理所有 dragging 和 drag-over 样式
+            document.querySelectorAll('.clip-item.dragging').forEach(el => el.classList.remove('dragging'));
+            document.querySelectorAll('.clip-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+        } finally {
+            draggedClipIndex = null; // 确保重置
+        }
+    }
+
+
+    // --- 【新增】触发后端拼接的函数 ---
+    async function handleStitchRequest() {
+        if (stitchingClips.length < 1) { // 至少需要一个片段
+            alert('请至少添加一个片段进行拼接。');
+            return;
+        }
+        stitchButton.disabled = true; stitchButton.textContent = '正在拼接...'; stitchResult.textContent = '';
+        // 【修正】发送包含路径和类型的数据
+        const clipsData = stitchingClips.map(clip => ({
+            path: clip.mediaPath,
+            type: clip.type
+        }));
+
+        try {
+            const response = await fetch('/api/stitch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clips: clipsData }) // <-- 发送 clips 数组
+            });
+            if (!response.ok) { const errText = await response.text(); throw new Error(`拼接失败: ${errText}`); }
+            const result = await response.json();
+            if (result.output_url) { stitchResult.innerHTML = `拼接完成！<a href="${result.output_url}" target="_blank" class="text-blue-500 hover:underline ml-2">点击下载/预览</a>;` }
+            else { throw new Error('后端未返回有效的输出URL'); }
+        } catch (error) { console.error(error); stitchResult.textContent = `错误: ${error.message}`; alert(error.message); }
+        finally { stitchButton.disabled = false; stitchButton.textContent = '拼接视频'; }
+    }
+
     // 此函数现在将图片发送给我们自己的后端 app.py
     async function uploadImage(file) {
         const formData = new FormData();
@@ -327,11 +556,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rawPath = d.data.media.rawPath;
                 const mediaUrl = d.data.media.url;
                 const isVideo = (typeof rawPath === 'string') && (rawPath.includes('.mp4') || rawPath.includes('subfolder=video'));
+                const canAddToStitch = true; 
                 if (isVideo) {
+                    /////////视频加"+"按钮/////////////
+                    if (canAddToStitch) {
+                        div.append('xhtml:button')
+                        .attr('class', 'absolute bottom-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-80 hover:opacity-100')
+                        .text('+')
+                        .on('click', (event) => {
+                            event.stopPropagation(); // 阻止触发节点的选择事件
+                            addClipToStitch(d.data,'video'); // 调用添加函数
+                        });
+                    }
+                    ////////////////////////////////////
                     const videoEl = div.append('xhtml:video').attr('class', 'thumb').attr('muted', true).attr('playsinline', true).attr('preload', 'metadata').node();
                     videoEl.autoplay = true; videoEl.loop = true; videoEl.muted = true; videoEl.playsInline = true; videoEl.src = mediaUrl;
                     videoEl.addEventListener('click', (ev) => { ev.stopPropagation(); openPreview(mediaUrl, 'video'); });
                 } else {
+                    /////////图片加"+"按钮/////////////
+                    if (canAddToStitch) {
+                        div.append('xhtml:button')
+                        .attr('class', 'absolute bottom-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-80 hover:opacity-100')
+                        .text('+')
+                        .on('click', (event) => {
+                            event.stopPropagation(); // 阻止触发节点的选择事件
+                            addClipToStitch(d.data,'image'); // 调用添加函数
+                        });
+                    }
+                    ////////////////////////////////////
                     const imgEl = div.append('xhtml:img').attr('class', 'thumb').attr('src', mediaUrl).attr('alt', d.data.module_id || 'thumb').node();
                     imgEl.addEventListener('click', (ev) => { ev.stopPropagation(); openPreview(mediaUrl, 'image'); });
                 }
@@ -346,6 +598,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePreview(); });
     generateBtn.addEventListener('click', handleGenerate);
+    stitchButton.addEventListener('click', handleStitchRequest); // 【新增】拼接按钮监听
     loadAndRender();
 });
 </script>
