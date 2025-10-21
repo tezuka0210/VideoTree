@@ -151,21 +151,20 @@ document.addEventListener('DOMContentLoaded', () => {
     let rootNodeId = null;
     let allNodes = [];
 
-    // --- 【不变】视频/图片相关函数，完全保持原样 ---
+    
     function showStatus(text) { statusEl.textContent = text; }
     function parseAssetsField(assetsField) { if (!assetsField) return null; try { if (typeof assetsField === 'string') { if (assetsField.trim() === '' || assetsField.trim() === '{}') return null; return JSON.parse(assetsField); } else if (typeof assetsField === 'object') { return assetsField; } } catch (err) { console.warn('解析 assets 失败:', err, assetsField); return null; } return null; }
     function firstMediaFromAssets(assets) { if (!assets) return null; const imgs = assets.images || []; const vids = assets.videos || []; if (Array.isArray(imgs) && imgs.length > 0) return { path: imgs[0], type: 'image' }; if (Array.isArray(vids) && vids.length > 0) return { path: vids[0], type: 'video' }; return null; }
     function makeFullUrl(path) { if (!path) return null; if (path.startsWith('http://') || path.startsWith('https://')) return path; const cleanPath = path.startsWith('/') ? path : '/' + path; return COMFYUI_URL + cleanPath; }
     function openPreview(mediaUrl, type) { overlay.innerHTML = ''; overlay.style.display = 'flex'; overlay.className = 'overlay'; const modal = document.createElement('div'); modal.className = 'modal'; const closeBtn = document.createElement('div'); closeBtn.style.textAlign = 'right'; closeBtn.innerHTML = '<button class="px-3 py-1 bg-gray-200 rounded">关闭</button>'; closeBtn.querySelector('button').addEventListener('click', closePreview); modal.appendChild(closeBtn); if (type === 'video') { const v = document.createElement('video'); v.src = mediaUrl; v.controls = true; v.autoplay = true; modal.appendChild(v); } else { const img = document.createElement('img'); img.src = mediaUrl; img.alt = 'preview'; modal.appendChild(img); } overlay.appendChild(modal); overlay.addEventListener('click', (e) => { if (e.target === overlay) closePreview(); }); }
     function closePreview() { overlay.style.display = 'none'; overlay.innerHTML = ''; }
-    // 【最终修正】此函数现在将图片发送给我们自己的后端 app.py
+    // 此函数现在将图片发送给我们自己的后端 app.py
     async function uploadImage(file) {
         const formData = new FormData();
-        // 关键1：字段名必须是 'file'，以匹配 app.py 中的 request.files['file']
         formData.append('file', file);
 
         try {
-            // 关键2：URL必须是我们自己后端 app.py 提供的接口
+            
             const response = await fetch('/api/assets/upload', {
                 method: 'POST',
                 body: formData
@@ -182,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return null;
         }
     }
-    // 【核心修改】生成函数，整合了 index(11).html 的详细参数逻辑
+    
     async function handleGenerate() {
         generateBtn.disabled = true;
         buttonText.textContent = '生成中...';
@@ -211,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const uploadedFile = imageUpload.files[0];
             if (uploadedFile) {
                 const uploadResult = await uploadImage(uploadedFile);
-                if (uploadResult?.name) { // ComfyUI 返回的字段是 name
+                if (uploadResult?.name) { 
                     parameters.image_input = { type: 'new_upload', filename: uploadResult.name };
                 } else {
                     throw new Error('图片上传后未收到有效文件名');
@@ -244,9 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error(error);
-            // 只有在真正抛出错误时才 alert，避免不必要的弹窗
             if (error.message.includes('缺少输入图片')) {
-                // 这个是用户操作问题，不需要弹窗
             } else {
                  alert(error.message);
             }
@@ -299,7 +296,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTree(rootData) {
-        // ... 此函数完全不变 ...
         wrapper.innerHTML = '';
         const width = wrapper.clientWidth || 1200;
         const height = wrapper.clientHeight || 600;
