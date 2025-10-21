@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>工作流缩略图回顾</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+        .node-card {
+            width: 140px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+            border: 1px solid #e5e7eb;
+        }
+        .thumb {
+            width: 140px;
+            height: 100px;
+            object-fit: cover;
+            background: #f3f4f6;
+            display: block;
+        }
+        .node-label {
+            padding: 6px 8px;
+            font-size: 12px;
+            color: #111827;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .link {
+            fill: none;
+            stroke: #9ca3af;
+            stroke-width: 2px;
+        }
+        .overlay {
+            position: fixed;
+            left: 0; top: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .modal {
+            background: #fff;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 90%;
+            padding: 12px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+            overflow: auto;
+        }
+        .modal img, .modal video {
+            max-width: 100%;
+            max-height: 80vh;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto p-4">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-semibold text-gray-800">工作流缩略图回顾</h1>
+            <p class="text-gray-500 mt-1">展示节点缩略图并以父子关系连接。点击缩略图可查看大图/预览。</p>
+        </header>
+
+        <div id="status" class="text-center text-gray-600 mb-4">正在从数据库加载作品...</div>
+
+        <div id="chart-wrapper" class="bg-white rounded shadow p-3" style="height: 640px; position: relative;">
+            <div id="chart" style="width:100%; height:100%;"></div>
+        </div>
+    </div>
+
+    <!-- modal preview -->
+    <div id="preview-overlay" style="display:none;"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const DB_API_URL = '/api/trees/1'; // 保持原接口
+    const COMFYUI_URL = 'http://223.193.6.178:8188'; // 保持或修改为你的静态文件服务地址
+    const statusEl = document.getElementById('status');
+    const wrapper = document.getElementById('chart');
+    const overlay = document.getElementById('preview-overlay');
+
+    function showStatus(text) { statusEl.textContent = text; }
+
+    function parseAssetsField(assetsField) {
+        if (!assetsField) return null;
+        try {
+            if (typeof assetsField === 'string') {
+                if (assetsField.trim() === '' || assetsField.trim() === '{}') return null;
+                return JSON.parse(assetsField);
+            } else if (typeof assetsField === 'object') {
+                return assetsField;
+            }
+        } catch (err) {
+            console.warn('解析 assets 失败:', err, assetsField);
+            return null;
+        }
+        return null;
+    }
+
+    function firstMediaFromAssets(assets) {
+        if (!assets) return null;
+        const imgs = assets.images || [];
+        const vids = assets.videos || [];
+        if (Array.isArray(imgs) && imgs.length > 0) return { path: imgs[0], type: 'image' };
+        if (Array.isArray(vids) && vids.length > 0) return { path: vids[0], type: 'video' };
+        return null;
+    }
+
+    function makeFullUrl(path) {
+        if (!path) return null;
+        if (path.startsWith('http://') || path.startsWith('https://')) return path;
+        return COMFYUI_URL + path;
+    }
+
+    function openPreview(mediaUrl, type) {
+        overlay.innerHTML = '';
+        overlay.style.display = 'flex';
+        overlay.className = 'overlay';
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        const closeBtn = document.createElement('div');
+        closeBtn.style.textAlign = 'right';
+        closeBtn.innerHTML = '<button class="px-3 py-1 bg-gray-200 rounded">关闭</button>';
+        closeBtn.querySelector('button').addEventListener('click', closePreview);
+        modal.appendChild(closeBtn);
+
+        if (type === 'video') {
+            const v = document.createElement('video');
+            v.src = mediaUrl;
+            v.controls = true;
+            v.autoplay = false;
+            modal.appendChild(v);
+        } else {
+            const img = document.createElement('img');
+            img.src = mediaUrl;
+            img.alt = 'preview';
+            modal.appendChild(img);
+        }
+        overlay.appendChild(modal);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closePreview(); });
+    }
+
+    function closePreview() {
+        overlay.style.display = 'none';
+        overlay.innerHTML = '';
+    }
+
+    async function loadAndRender() {
+        try {
+            showStatus('正在从数据库加载作品...');
+            const res = await fetch(DB_API_URL);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const treeData = await res.json();
+            if (!treeData.nodes || treeData.nodes.length === 0) {
+                showStatus('数据库中没有找到任何节点。');
+                return;
+            }
+
+            const nodeMap = {};
+            const nodesRaw = treeData.nodes;
+            nodesRaw.forEach(n => {
+                const parsedAssets = parseAssetsField(n.assets);
+                const firstMedia = firstMediaFromAssets(parsedAssets);
+                // 这里保留原始 path 字符串（用于判断视频）并生成完整 URL
+                const media = firstMedia ? { rawPath: firstMedia.path, url: makeFullUrl(firstMedia.path), type: firstMedia.type } : null;
+                nodeMap[n.node_id] = {
+                    id: n.node_id,
+                    parent_id: n.parent_id,
+                    module_id: n.module_id,
+                    created_at: n.created_at,
+                    status: n.status,
+                    media: media
+                };
+            });
+
+            const fakeRoot = { id: '__ROOT__', module_id: 'ROOT', children: [] };
+            Object.values(nodeMap).forEach(n => n.children = []);
+            Object.values(nodeMap).forEach(n => {
+                if (n.parent_id && nodeMap[n.parent_id]) {
+                    nodeMap[n.parent_id].children.push(n);
+                } else {
+                    fakeRoot.children.push(n);
+                }
+            });
+
+            renderTree(fakeRoot);
+            showStatus('');
+        } catch (err) {
+            console.error(err);
+            showStatus('加载失败: ' + err.message);
+        }
+    }
+
+    function renderTree(rootData) {
+        wrapper.innerHTML = '';
+
+        const width = wrapper.clientWidth || 1200;
+        const height = wrapper.clientHeight || 600;
+
+        const svg = d3.select('#chart')
+            .append('svg')
+            .attr('width', '100%')
+            .attr('height', '100%')
+            .attr('viewBox', `0 0 ${width} ${height}`)
+            .attr('preserveAspectRatio', 'xMidYMid meet');
+
+        const g = svg.append('g').attr('transform', 'translate(40,40)');
+
+        const zoom = d3.zoom().scaleExtent([0.3, 2.5]).on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+        svg.call(zoom);
+
+        const root = d3.hierarchy(rootData, d => d.children);
+        const treeLayout = d3.tree().nodeSize([180, 160]);
+        treeLayout(root);
+
+        const links = g.selectAll('.link')
+            .data(root.links().filter(d => d.source.data.id !== '__ROOT__'))
+            .enter()
+            .append('path')
+            .attr('class', 'link')
+            .attr('d', d => {
+                const sourceX = d.source.x;
+                const sourceY = d.source.y;
+                const targetX = d.target.x;
+                const targetY = d.target.y;
+                return `M${sourceX},${sourceY + 60} C${sourceX},${(sourceY + targetY)/2} ${targetX},${(sourceY + targetY)/2} ${targetX},${targetY - 6}`;
+            })
+            .attr('stroke', '#9ca3af')
+            .attr('fill', 'none');
+
+        const node = g.selectAll('.node')
+            .data(root.descendants().filter(d => d.data.id !== '__ROOT__'))
+            .enter()
+            .append('g')
+            .attr('class', 'node')
+            .attr('transform', d => `translate(${d.x - 70}, ${d.y - 50})`);
+
+        node.each(function(d) {
+            const fo = d3.select(this).append('foreignObject')
+                .attr('width', 140)
+                .attr('height', 140)
+                .style('overflow', 'visible');
+
+            const div = fo.append('xhtml:div')
+                .attr('class', 'node-card')
+                .style('cursor', d.data.media ? 'pointer' : 'default');
+
+            // --- 关键：媒体创建逻辑（严格保留“原 review.html”的视频加载方式） ---
+            if (d.data.media && d.data.media.rawPath) {
+                const rawPath = d.data.media.rawPath;
+                const mediaUrl = d.data.media.url; // 已由 makeFullUrl 生成
+                // 使用原始判断逻辑来识别视频
+                const isVideo = (typeof rawPath === 'string') && (rawPath.includes('.mp4') || rawPath.includes('subfolder=video'));
+
+                if (isVideo) {
+                    // 与原 review.html 保持一致的设置
+                    const videoEl = div.append('xhtml:video')
+                        .attr('class', 'thumb')
+                        .attr('muted', true)
+                        .attr('playsinline', true)
+                        .attr('preload', 'metadata')
+                        .node(); // 获取原生元素以设置属性更可靠
+
+                    // 保证行为与原始实现一致（autoplay/loop/muted/playsInline）
+                    videoEl.autoplay = true;
+                    videoEl.loop = true;
+                    videoEl.muted = true;
+                    videoEl.playsInline = true;
+                    videoEl.src = mediaUrl;
+
+                    // 点击时打开预览（预览使用带控制的 video 元素）
+                    videoEl.addEventListener('click', (ev) => { ev.stopPropagation(); openPreview(mediaUrl, 'video'); });
+                } else {
+                    const imgEl = div.append('xhtml:img')
+                        .attr('class', 'thumb')
+                        .attr('src', mediaUrl)
+                        .attr('alt', d.data.module_id || 'thumb')
+                        .node();
+                    imgEl.addEventListener('click', (ev) => { ev.stopPropagation(); openPreview(mediaUrl, 'image'); });
+                }
+            } else {
+                div.append('xhtml:div')
+                    .attr('class', 'thumb')
+                    .style('display','flex')
+                    .style('align-items','center')
+                    .style('justify-content','center')
+                    .style('font-size','12px')
+                    .style('color','#6b7280')
+                    .text('无缩略图');
+            }
+
+            div.append('xhtml:div')
+                .attr('class', 'node-label')
+                .text(d.data.module_id || '(节点)');
+
+            const titleText = (d.data.module_id || '') + (d.data.created_at ? ' · ' + d.data.created_at : '') + (d.data.status ? ' · ' + d.data.status : '');
+            this.setAttribute('title', titleText);
+        });
+
+        // 调整视窗使内容居中并缩放适配
+        const nodes = root.descendants().filter(d => d.data.id !== '__ROOT__');
+        if (nodes.length) {
+            const minX = d3.min(nodes, d => d.x - 70);
+            const maxX = d3.max(nodes, d => d.x + 70);
+            const minY = d3.min(nodes, d => d.y - 50);
+            const maxY = d3.max(nodes, d => d.y + 90);
+            const contentW = maxX - minX;
+            const contentH = maxY - minY;
+
+            const viewW = width - 80;
+            const viewH = height - 80;
+            const kx = viewW / (contentW || 1);
+            const ky = viewH / (contentH || 1);
+            const k = Math.min(1, Math.min(kx, ky)) * 0.95;
+
+            const translateX = (viewW - contentW * k) / 2 - (minX * k) + 40;
+            const translateY = (viewH - contentH * k) / 2 - (minY * k) + 40;
+
+            svg.transition().call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(k));
+        }
+    }
+
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePreview(); });
+
+    loadAndRender();
+});
+</script>
+</body>
+</html>

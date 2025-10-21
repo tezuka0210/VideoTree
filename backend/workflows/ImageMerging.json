@@ -1,0 +1,51 @@
+{
+  "1": {
+    "inputs": {
+      "image": "中和正 (1).png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image": "花瓶.webp"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage(Move)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "stitch": "top",
+      "feathering": 0,
+      "image_a": [
+        "1",
+        0
+      ],
+      "image_b": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "Image Stitch",
+    "_meta": {
+      "title": "Image Stitch"
+    }
+  },
+  "5": {
+    "inputs": {
+      "filename_prefix": "ImageMerging",
+      "images": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  }
+}
