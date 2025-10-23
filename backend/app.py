@@ -25,8 +25,8 @@ CORS(app)
 # --- 配置常量 ---
 COMFYUI_SERVER_ADDRESS = "223.193.6.178:8188" # ComfyUI后端的地址和端口
 CLIENT_ID = str(uuid.uuid4()) # 为我们的后端应用生成一个唯一的客户端ID
-UPLOAD_FOLDER = 'assets'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# UPLOAD_FOLDER = 'assets'
+# os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 BASE_COMFYUI_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'comfyui', 'comfyui'))
 COMFYUI_INPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'input')
 COMFYUI_OUTPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'output')
@@ -124,6 +124,70 @@ def get_comfyui_outputs(prompt_id: str) -> dict:
     return outputs
 
 
+
+
+# 【核心修正】_get_image_info_from_parent 函数
+def _get_image_info_from_parent(parent_node_id):
+    """根据父节点ID，获取其输出资源信息。
+       如果父节点是 'Upload' 类型，只返回文件名；
+       否则，复制文件到 input 目录，并返回文件名。
+    """
+    source_node = database.get_node(parent_node_id)
+    if not source_node:
+        raise ValueError(f"指定的父节点 {parent_node_id} 不存在。")
+
+    assets = source_node.get('assets', {})
+    # 优先使用图片，Upload 节点通常只有图片
+    media_list = assets.get('images', []) or assets.get('videos', [])
+    if not media_list:
+        raise ValueError(f"父节点 {parent_node_id} 没有可用的媒体资源。")
+
+    media_url = media_list[0]
+    parsed_url = urllib.parse.urlparse(media_url)
+    query_params = urllib.parse.parse_qs(parsed_url.query)
+    filename = query_params.get('filename', [None])[0]
+    subfolder = query_params.get('subfolder', [''])[0]
+    file_type = query_params.get('type', ['output'])[0] # 'input' or 'output'
+
+    if not filename:
+         raise ValueError(f"无法从父节点资源URL解析文件名: {media_url}")
+
+    # --- 区分处理逻辑 ---
+    if source_node.get("module_id") == "Upload" or file_type == "input":
+        # 如果父节点是 Upload 或资源类型是 input，文件已在 input 目录
+        source_path = os.path.join(COMFYUI_INPUT_PATH, filename)
+        if not os.path.exists(source_path):
+             # 尝试在 output 目录也找一下，以防万一
+             output_source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
+             if os.path.exists(output_source_path):
+                 print(f"    - 警告: Upload 节点资源 '{filename}' 在 input 未找到，但在 output 找到，执行复制。")
+                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
+                 try: shutil.copy(output_source_path, destination_path)
+                 except Exception as e: raise IOError(f"从 output 复制 Upload 节点文件失败: {filename}, 原因: {e}")
+             else:
+                 raise FileNotFoundError(f"源文件 (来自上传节点) 在 input 和 output 目录均未找到: {filename}")
+        print(f"    - 使用来自上传节点的文件: {filename} (无需或已复制)")
+        return filename # 只返回文件名
+    else:
+        # 否则，文件在 output 目录，需要复制到 input
+        source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
+        destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
+        if not os.path.exists(source_path):
+            source_path_alt = os.path.join(COMFYUI_OUTPUT_PATH, filename)
+            if not os.path.exists(source_path_alt):
+               raise FileNotFoundError(f"源文件未找到: {source_path} 或 {source_path_alt}")
+            else: source_path = source_path_alt
+
+        try:
+            shutil.copy(source_path, destination_path)
+            print(f"    - 已将文件 '{filename}' 从 output 复制到 input 目录。")
+            return filename
+        except Exception as e:
+            print(f"    - 错误: 文件复制失败: {e}")
+            raise IOError(f"复制文件失败: {filename}")
+
+
+
 # --- 3. Flask API 路由定义 ---
 @app.route('/')
 def index():
@@ -191,19 +255,55 @@ def view_file():
 
 @app.route('/api/assets/upload', methods=['POST'])
 def upload_asset():
-    """API: 供用户上传全新的文件，并直接保存到ComfyUI的input目录"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+    """API: 接收上传文件，保存到 input，创建 'Upload' 数据库节点，返回更新后的树。"""
+    if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    
-    filename = str(uuid.uuid4()) + os.path.splitext(file.filename)[1]
-    filepath = os.path.join(COMFYUI_INPUT_PATH, filename)
-    file.save(filepath)
-    print(f"    - 文件已上传并保存到ComfyUI的输入目录: {filepath}")
-    # 返回纯文件名
-    return jsonify({"name": filename}), 201
+    if file.filename == '': return jsonify({"error": "No selected file"}), 400
+
+    # 从查询参数获取 tree_id 和可选的 parent_id
+    tree_id = request.args.get('tree_id', default=1, type=int)
+    parent_id = request.args.get('parent_id', default=None, type=str)
+    parent_ids = [parent_id] if parent_id else []
+
+    try:
+        # 1. 保存文件到 ComfyUI input 目录
+        _, ext = os.path.splitext(file.filename)
+        # 使用UUID确保文件名唯一，保留原始扩展名
+        filename = f"{uuid.uuid4()}{ext}" 
+        filepath = os.path.join(COMFYUI_INPUT_PATH, filename)
+        file.save(filepath)
+        print(f"    - 文件已上传并保存到ComfyUI的输入目录: {filepath}")
+
+        # 2. 构建 assets 字典 (注意 type='input')
+        asset_url = f"/view?filename={urllib.parse.quote_plus(filename)}&subfolder=&type=input"
+        assets = {"images": [asset_url]} # 假设上传的总是图片
+
+        # 3. 在数据库中创建 Upload 节点
+        new_node_id = database.add_node(
+            tree_id=tree_id,
+            parent_ids=parent_ids,
+            module_id="Upload", # 特定的模块ID
+            parameters={"original_filename": file.filename}, # 记录原始文件名
+            assets=assets,
+            status='completed' # 上传即完成
+        )
+        if not new_node_id:
+            raise Exception("创建 Upload 数据库节点失败")
+
+        # 4. 获取并返回更新后的树结构
+        updated_tree = database.get_tree_as_json(tree_id)
+        if not updated_tree:
+             raise Exception("获取更新后的树失败")
+
+        return jsonify(updated_tree), 201
+
+    except Exception as e:
+        print(f"处理上传并创建节点时出错: {e}")
+        # 尝试清理已保存的文件？(可选)
+        if 'filepath' in locals() and os.path.exists(filepath):
+            try: os.remove(filepath)
+            except OSError: pass
+        return jsonify({"error": f"处理上传失败: {e}"}), 500
 
 
 @app.route('/api/trees/<int:tree_id>', methods=['GET'])
@@ -250,186 +350,266 @@ def create_node():
     print(json.dumps(data, indent=2, ensure_ascii=False))
     print("-------------------------------")
     tree_id = data.get('tree_id')
-    parent_id = data.get('parent_id') # 现在我们简化为单个父节点
-    module_id = data.get('module_id')
+    parent_ids = data.get('parent_ids',[]) # 现在我们简化为单个父节点
+    module_id_from_frontend = data.get('module_id')
     parameters = data.get('parameters', {})
 
-    workflow = load_workflow(module_id)
-    if workflow is None:
-        return jsonify({"error": f"Workflow for module '{module_id}' not found."}), 404
-
-    # --- 动态修改工作流 ---
-    # PROMPT
-    prompt_positive_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Positive Prompt)")
-    if prompt_positive_node_id and 'positive_prompt' in parameters:
-        workflow[prompt_positive_node_id]["inputs"]["text"] = parameters['positive_prompt']
-    
-    prompt_negative_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Negative Prompt)")
-    if prompt_negative_node_id and 'negative_prompt' in parameters:
-        workflow[prompt_negative_node_id]["inputs"]["text"] = parameters['negative_prompt']
-
-    # WIDTH HEIGHT LENGTH BATCH_SIZE SPEED
-    size_node_id = find_node_id_by_title(workflow, "Size_Setting")
-    if size_node_id:
-        if 'width' in parameters:
-            workflow[size_node_id]["inputs"]["width"] = parameters['width']
-        if 'height' in parameters:
-            workflow[size_node_id]["inputs"]["height"] = parameters['height']
-        if 'batch_size' in parameters:
-            workflow[size_node_id]["inputs"]["batch_size"] = parameters['batch_size']
-        if 'length' in parameters:
-            workflow[size_node_id]["inputs"]["length"] = parameters['length']
-        if 'speed' in parameters:
-            workflow[size_node_id]["inputs"]["speed"] = parameters['speed']
-
-    # KSAMPLE
-    sampler_node_id = find_node_id_by_title(workflow, "KSampler")
-    if sampler_node_id:
-        if 'seed' in parameters:
-            workflow[sampler_node_id]["inputs"]["seed"] = parameters['seed']
-        if 'cfg' in parameters:
-            workflow[sampler_node_id]["inputs"]["cfg"] = parameters['cfg']
-        if 'step' in parameters:
-            workflow[sampler_node_id]["inputs"]["steps"] = parameters['steps']
-        if 'denoise' in parameters:
-            workflow[sampler_node_id]["inputs"]["denoise"] = parameters['denoise']
-
-    # FLUX GUIDANCE
-    guidance_node_id = find_node_id_by_title(workflow, "FluxGuidance")
-    if guidance_node_id and 'guidance' in parameters:
-        workflow[guidance_node_id]["inputs"]["guidance"] = parameters['guidance']
-
-
-    # IMAGE
-    image_input_node_id = find_node_id_by_title(workflow, "LoadImage")
-    if image_input_node_id and 'image_input' in parameters:
-        image_input_info = parameters['image_input']
-        image_filename = None
-        # 场景1: 图像来自一个已存在的节点   
-        if image_input_info.get('type') == 'from_node':
-            source_node_id = image_input_info.get('node_id')
-            source_node = database.get_node(source_node_id)
-            if source_node and source_node.get('assets', {}).get('images'):
-                image_url = source_node['assets']['images'][0]
-                parsed_url = urllib.parse.urlparse(image_url)
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                
-                filename = query_params.get('filename', [None])[0]
-                subfolder = query_params.get('subfolder', [''])[0]
-                
-                if filename:
-                # 构建源文件和目标文件的完整路径
-                    source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-                    destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-                    # 检查源文件是否存在，然后复制
-                    if os.path.exists(source_path):
-                        try:
-                            with open(source_path, 'rb') as f_read:
-                                with open(destination_path, 'wb') as f_write:
-                                    f_write.write(f_read.read())
-                            image_filename = filename
-                            print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
-                        except IOError as e:
-                            print(f"    -  错误: 文件复制失败: {e}")
-                    else:
-                        print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
-
-                
-         # 场景2: 图像是用户新上传的
-        elif image_input_info.get('type') == 'new_upload':
-            # 直接使用上传接口返回的路径，并提取文件名
-            # 注意：这要求ComfyUI能访问到这个'assets'文件夹
-            image_filename = image_input_info.get('filename')
-                
-        # 如果成功获取了文件名，则注入到工作流中
-        if image_filename:
-            workflow[image_input_node_id]["inputs"]["image"] = image_filename
-        else:
-            print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
-
-    # IMAGE MOVE
-    image_move_input_node_id = find_node_id_by_title(workflow, "LoadImage(Move)")
-    if image_move_input_node_id and 'image_input' in parameters:
-        image_move_input_info = parameters['image_input']
-        image_filename = None
-        # 场景1: 图像来自一个已存在的节点   
-        if source_node and source_node.get('assets', {}).get('images'):
-                image_url = source_node['assets']['images'][0]
-                parsed_url = urllib.parse.urlparse(image_url)
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                
-                filename = query_params.get('filename', [None])[0]
-                subfolder = query_params.get('subfolder', [''])[0]
-                
-                if filename:
-                # 构建源文件和目标文件的完整路径
-                    source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-                    destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-                    # 检查源文件是否存在，然后复制
-                    if os.path.exists(source_path):
-                        try:
-                            with open(source_path, 'rb') as f_read:
-                                with open(destination_path, 'wb') as f_write:
-                                    f_write.write(f_read.read())
-                            image_filename = filename
-                            print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
-                        except IOError as e:
-                            print(f"    -  错误: 文件复制失败: {e}")
-                    else:
-                        print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
-                
-         # 场景2: 图像是用户新上传的
-        elif image_move_input_info.get('type') == 'new_upload':
-            image_filename = image_input_info.get('filename')
-        if image_filename:
-            workflow[image_input_node_id]["inputs"]["image"] = image_filename
-        else:
-            print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
-
-    # IMAGE MASK
-    image_mask_input_node_id = find_node_id_by_title(workflow, "LoadImage(Mask)")
-    if image_mask_input_node_id and 'image_input' in parameters:
-        image_mask_input_info = parameters['image_input']
-        image_filename = None
-        # 场景1: 图像来自一个已存在的节点   
-        if image_mask__input_info.get('type') == 'from_node':
-            source_node_id = image_mask__input_info.get('node_id')
-            source_node = database.get_node(source_node_id)
-            if source_node and source_node.get('assets', {}).get('images'):
-                image_url = source_node['assets']['images'][0]
-                parsed_url = urllib.parse.urlparse(image_url)
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                
-                filename = query_params.get('filename', [None])[0]
-                subfolder = query_params.get('subfolder', [''])[0]
-                
-                if filename:
-                # 构建源文件和目标文件的完整路径
-                    source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-                    destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-                    # 检查源文件是否存在，然后复制
-                    if os.path.exists(source_path):
-                        try:
-                            with open(source_path, 'rb') as f_read:
-                                with open(destination_path, 'wb') as f_write:
-                                    f_write.write(f_read.read())
-                            image_filename = filename
-                            print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
-                        except IOError as e:
-                            print(f"    -  错误: 文件复制失败: {e}")
-                    else:
-                        print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
-                
-         # 场景2: 图像是用户新上传的
-        elif image_mask_input_info.get('type') == 'new_upload':
-             image_filename = image_input_info.get('filename')
-        if image_filename:
-            workflow[image_input_node_id]["inputs"]["image"] = image_filename
-        else:
-            print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
-
+    # workflow = load_workflow(module_id)
+    # if workflow is None:
+    #     return jsonify({"error": f"Workflow for module '{module_id}' not found."}), 404
+    workflow = None
+    final_module_id = module_id_from_frontend # 最终使用的模块ID
+    image_filenames = {} # 用于存储需要注入的文件名 { "node_title": "filename.png" }
 
     try:
+        # --- 根据输入情况决定加载哪个工作流和处理输入 ---
+        
+        # 情况3: Mask 输入 (最高优先级判断)
+        if 'mask_filename' in parameters:
+            print(">>> 检测到 Mask 输入，加载 Inpainting 工作流...")
+            final_module_id = 'PartialRepainting' # 强制使用 Inpainting 模块
+            workflow = load_workflow(final_module_id)
+            if workflow is None: raise ValueError(f"未找到 Inpainting 工作流 '{final_module_id}.json'")
+            if len(parent_ids) != 1: raise ValueError("Mask 输入模式需要且仅需要一个父节点提供原图。")
+            
+            # 处理原图输入
+            original_image_filename = _get_image_info_from_parent(parent_ids[0])
+            image_filenames["LoadImage"] = original_image_filename
+            
+            # 处理 Mask 输入 (直接使用文件名)
+            mask_filename = parameters.get('mask_filename')
+            if not mask_filename: raise ValueError("Mask 文件名在参数中缺失。")
+            # 确认 Mask 文件存在于 input 目录 (可选的安全检查)
+            if not os.path.exists(os.path.join(COMFYUI_INPUT_PATH, mask_filename)):
+                raise FileNotFoundError(f"上传的 Mask 文件 '{mask_filename}' 在 input 目录中未找到。")
+            image_filenames["LoadImage(Mask)"] = mask_filename
+            print(f"    - 原图: {original_image_filename}, Mask图: {mask_filename}")
+
+        # 情况2: 两个父节点 -> 图像合并
+        elif len(parent_ids) == 2:
+            print(">>> 检测到两个父节点，加载 ImageMerging 工作流...")
+            final_module_id = 'ImageMerging' # 强制使用 Merging 模块
+            workflow = load_workflow(final_module_id)
+            if workflow is None: raise ValueError(f"未找到 ImageMerging 工作流 '{final_module_id}.json'")
+            
+            # 处理两个父节点的图像输入
+            image1_filename = _get_image_info_from_parent(parent_ids[0])
+            image2_filename = _get_image_info_from_parent(parent_ids[1])
+            image_filenames["LoadImage"] = image1_filename
+            image_filenames["LoadImage(Move)"] = image2_filename # 假设第二个输入节点标题是这个
+            print(f"    - 输入图1: {image1_filename}, 输入图2: {image2_filename}")
+
+        # 情况1: 一个父节点 -> 标准图生图/图生视频
+        elif len(parent_ids) == 1:
+            print(f">>> 检测到一个父节点，加载工作流: {module_id_from_frontend}")
+            final_module_id = module_id_from_frontend
+            workflow = load_workflow(final_module_id)
+            if workflow is None: raise ValueError(f"未找到工作流 '{final_module_id}.json'")
+            
+            # 处理单个父节点的图像输入 (仅当模块需要时才处理)
+            if final_module_id in ['ImageGenerateImage_Basic', 'ImageGenerateImage_Canny','ImageGenerateVideo','CameraControl','ImageCanny','ImageHDRestoration','ImageMerging','PartialRepainting','Put_It_Here','RemoveBackground']: # 根据你的模块ID调整
+                image_filename = _get_image_info_from_parent(parent_ids[0])
+                image_filenames["LoadImage"] = image_filename
+                print(f"    - 输入图: {image_filename}")
+            else:
+                 print("    - 当前模块不需要父节点图像输入。")
+
+
+        # 情况0: 没有父节点 -> 文生图/文生视频 或 根节点创建
+        else: # len(parent_ids) == 0
+             print(f">>> 没有父节点，加载工作流: {module_id_from_frontend}")
+             final_module_id = module_id_from_frontend
+             workflow = load_workflow(final_module_id)
+             if workflow is None: raise ValueError(f"未找到工作流 '{final_module_id}.json'")
+             # 检查是否需要上传图片
+             if final_module_id in ['ImageGenerateImage_Basic', 'ImageGenerateVideo']:
+                  raise ValueError(f"模块 {final_module_id} 需要输入图像，但没有提供父节点。")
+             else:
+                  print("    - 当前模块是文本生成类型，不需要图像输入。")
+
+
+        # --- 注入图像文件名到工作流 ---
+        for node_title, filename in image_filenames.items():
+            target_node_id = find_node_id_by_title(workflow, node_title)
+            if target_node_id:
+                workflow[target_node_id]["inputs"]["image"] = filename
+                print(f"    - 已将文件名 '{filename}' 注入到节点 '{node_title}' (ID: {target_node_id})。")
+            else:
+                print(f"警告：在工作流 '{final_module_id}.json' 中未找到标题为 '{node_title}' 的节点用于注入文件名。")
+
+
+        # --- 动态修改工作流 ---
+        # PROMPT
+        prompt_positive_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Positive Prompt)")
+        if prompt_positive_node_id and 'positive_prompt' in parameters:
+            workflow[prompt_positive_node_id]["inputs"]["text"] = parameters['positive_prompt']
+        
+        prompt_negative_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Negative Prompt)")
+        if prompt_negative_node_id and 'negative_prompt' in parameters:
+            workflow[prompt_negative_node_id]["inputs"]["text"] = parameters['negative_prompt']
+
+        # WIDTH HEIGHT LENGTH BATCH_SIZE SPEED
+        size_node_id = find_node_id_by_title(workflow, "Size_Setting")
+        if size_node_id:
+            if 'width' in parameters:
+                workflow[size_node_id]["inputs"]["width"] = parameters['width']
+            if 'height' in parameters:
+                workflow[size_node_id]["inputs"]["height"] = parameters['height']
+            if 'batch_size' in parameters:
+                workflow[size_node_id]["inputs"]["batch_size"] = parameters['batch_size']
+            if 'length' in parameters:
+                workflow[size_node_id]["inputs"]["length"] = parameters['length']
+            if 'speed' in parameters:
+                workflow[size_node_id]["inputs"]["speed"] = parameters['speed']
+
+        # KSAMPLE
+        sampler_node_id = find_node_id_by_title(workflow, "KSampler")
+        if sampler_node_id:
+            if 'seed' in parameters:
+                workflow[sampler_node_id]["inputs"]["seed"] = parameters['seed']
+            if 'cfg' in parameters:
+                workflow[sampler_node_id]["inputs"]["cfg"] = parameters['cfg']
+            if 'steps' in parameters:
+                workflow[sampler_node_id]["inputs"]["steps"] = parameters['steps']
+            if 'denoise' in parameters:
+                workflow[sampler_node_id]["inputs"]["denoise"] = parameters['denoise']
+
+        # FLUX GUIDANCE
+        guidance_node_id = find_node_id_by_title(workflow, "FluxGuidance")
+        if guidance_node_id and 'guidance' in parameters:
+            workflow[guidance_node_id]["inputs"]["guidance"] = parameters['guidance']
+
+        
+    # IMAGE
+    # image_input_node_id = find_node_id_by_title(workflow, "LoadImage")
+    # if image_input_node_id and 'image_input' in parameters:
+    #     image_input_info = parameters['image_input']
+    #     image_filename = None
+    #     # 场景1: 图像来自一个已存在的节点   
+    #     if image_input_info.get('type') == 'from_node':
+    #         source_node_id = image_input_info.get('node_id')
+    #         source_node = database.get_node(source_node_id)
+    #         if source_node and source_node.get('assets', {}).get('images'):
+    #             image_url = source_node['assets']['images'][0]
+    #             parsed_url = urllib.parse.urlparse(image_url)
+    #             query_params = urllib.parse.parse_qs(parsed_url.query)
+                
+    #             filename = query_params.get('filename', [None])[0]
+    #             subfolder = query_params.get('subfolder', [''])[0]
+                
+    #             if filename:
+    #             # 构建源文件和目标文件的完整路径
+    #                 source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
+    #                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
+    #                 # 检查源文件是否存在，然后复制
+    #                 if os.path.exists(source_path):
+    #                     try:
+    #                         with open(source_path, 'rb') as f_read:
+    #                             with open(destination_path, 'wb') as f_write:
+    #                                 f_write.write(f_read.read())
+    #                         image_filename = filename
+    #                         print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
+    #                     except IOError as e:
+    #                         print(f"    -  错误: 文件复制失败: {e}")
+    #                 else:
+    #                     print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
+
+                
+    #      # 场景2: 图像是用户新上传的
+    #     elif image_input_info.get('type') == 'new_upload':
+    #         # 直接使用上传接口返回的路径，并提取文件名
+    #         # 注意：这要求ComfyUI能访问到这个'assets'文件夹
+    #         image_filename = image_input_info.get('filename')
+                
+    #     # 如果成功获取了文件名，则注入到工作流中
+    #     if image_filename:
+    #         workflow[image_input_node_id]["inputs"]["image"] = image_filename
+    #     else:
+    #         print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
+
+    # IMAGE MOVE
+    # image_move_input_node_id = find_node_id_by_title(workflow, "LoadImage(Move)")
+    # if image_move_input_node_id and 'image_input' in parameters:
+    #     image_move_input_info = parameters['image_input']
+    #     image_filename = None
+    #     # 场景1: 图像来自一个已存在的节点   
+    #     if source_node and source_node.get('assets', {}).get('images'):
+    #             image_url = source_node['assets']['images'][0]
+    #             parsed_url = urllib.parse.urlparse(image_url)
+    #             query_params = urllib.parse.parse_qs(parsed_url.query)
+                
+    #             filename = query_params.get('filename', [None])[0]
+    #             subfolder = query_params.get('subfolder', [''])[0]
+                
+    #             if filename:
+    #             # 构建源文件和目标文件的完整路径
+    #                 source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
+    #                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
+    #                 # 检查源文件是否存在，然后复制
+    #                 if os.path.exists(source_path):
+    #                     try:
+    #                         with open(source_path, 'rb') as f_read:
+    #                             with open(destination_path, 'wb') as f_write:
+    #                                 f_write.write(f_read.read())
+    #                         image_filename = filename
+    #                         print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
+    #                     except IOError as e:
+    #                         print(f"    -  错误: 文件复制失败: {e}")
+    #                 else:
+    #                     print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
+                
+    #      # 场景2: 图像是用户新上传的
+    #     elif image_move_input_info.get('type') == 'new_upload':
+    #         image_filename = image_input_info.get('filename')
+    #     if image_filename:
+    #         workflow[image_input_node_id]["inputs"]["image"] = image_filename
+    #     else:
+    #         print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
+
+    # # IMAGE MASK
+    # image_mask_input_node_id = find_node_id_by_title(workflow, "LoadImage(Mask)")
+    # if image_mask_input_node_id and 'image_input' in parameters:
+    #     image_mask_input_info = parameters['image_input']
+    #     image_filename = None
+    #     # 场景1: 图像来自一个已存在的节点   
+    #     if image_mask__input_info.get('type') == 'from_node':
+    #         source_node_id = image_mask__input_info.get('node_id')
+    #         source_node = database.get_node(source_node_id)
+    #         if source_node and source_node.get('assets', {}).get('images'):
+    #             image_url = source_node['assets']['images'][0]
+    #             parsed_url = urllib.parse.urlparse(image_url)
+    #             query_params = urllib.parse.parse_qs(parsed_url.query)
+                
+    #             filename = query_params.get('filename', [None])[0]
+    #             subfolder = query_params.get('subfolder', [''])[0]
+                
+    #             if filename:
+    #             # 构建源文件和目标文件的完整路径
+    #                 source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
+    #                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
+    #                 # 检查源文件是否存在，然后复制
+    #                 if os.path.exists(source_path):
+    #                     try:
+    #                         with open(source_path, 'rb') as f_read:
+    #                             with open(destination_path, 'wb') as f_write:
+    #                                 f_write.write(f_read.read())
+    #                         image_filename = filename
+    #                         print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
+    #                     except IOError as e:
+    #                         print(f"    -  错误: 文件复制失败: {e}")
+    #                 else:
+    #                     print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
+                
+    #      # 场景2: 图像是用户新上传的
+    #     elif image_mask_input_info.get('type') == 'new_upload':
+    #          image_filename = image_input_info.get('filename')
+    #     if image_filename:
+    #         workflow[image_input_node_id]["inputs"]["image"] = image_filename
+    #     else:
+    #         print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
+
+
+    # try:
         # --- 调用ComfyUI并等待结果 ---
         queued_prompt = queue_comfyui_prompt(workflow)
         prompt_id = queued_prompt['prompt_id']
@@ -437,18 +617,24 @@ def create_node():
         # 使用WebSocket等待并获取输出
         outputs = get_comfyui_outputs(prompt_id)
 
+    except (ValueError, FileNotFoundError, IOError) as e:
+        print(f"处理节点创建请求时出错: {e}")
+        return jsonify({"error": str(e)}), 400 # 返回 400 Bad Request 更合适
     except Exception as e:
-        print(f"执行ComfyUI工作流时出错: {e}")
-        return jsonify({"error": "Failed to execute ComfyUI workflow."}), 500
+        print(f"执行 ComfyUI 工作流或数据库操作时发生未知错误: {e}")
+        return jsonify({"error": "执行工作流时发生内部错误。"}), 500
 
     # --- 在数据库中记录新节点 ---
     new_node_id = database.add_node(
         tree_id=tree_id,
-        parent_id=parent_id,
-        module_id=module_id,
-        parameters=parameters,
-        assets=outputs # 直接保存从ComfyUI获取的输出信息
+        parent_ids=parent_ids, # 传递原始的父节点列表
+        module_id=final_module_id, # 保存实际使用的模块ID
+        parameters=parameters, # 保存前端传入的原始参数
+        assets=outputs,
+        status='completed' # 假设执行成功
     )
+    if not new_node_id:
+        return jsonify({"error": "节点执行成功但保存到数据库失败。"}), 500
 
     # --- 返回更新后的树结构 ---
     updated_tree = database.get_tree_as_json(tree_id)

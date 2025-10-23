@@ -8,6 +8,11 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+        html, body {
+            height: 100%; /* 关键：让 html 和 body 占满全高 */
+            margin: 0;
+            overflow: hidden; /* 关键：禁止整个页面滚动 */
+        }
         .node-card {
             width: 140px;
             border-radius: 8px;
@@ -107,22 +112,36 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="container mx-auto p-4">
+<body class="bg-gray-50 h-screen flex flex-col">
+    <div class="container mx-auto p-4 h-full flex flex-col">
         <header class="text-center mb-6">
             <h1 class="text-3xl font-semibold text-gray-800">工作流创作与回顾</h1>
             <p id="status" class="text-gray-500 mt-1">正在从数据库加载作品...</p>
         </header>
 
-        <main class="grid grid-cols-3 gap-6">
-            <div class="col-span-2">
-                <div id="chart-wrapper" class="bg-white rounded shadow p-3" style="height: 75vh; position: relative;">
+        <main class="grid grid-cols-3 gap-6 flex-1 min-h-0">
+            <div class="col-span-2 flex flex-col gep-4 min-h-0">
+                <div id="chart-wrapper" class="bg-white rounded shadow p-3 flex-1 min-h-0" style="position: relative;">
                     <div id="chart" style="width:100%; height:100%;"></div>
                 </div>
+
+                <div class="bg-white rounded shadow p-4">
+                    <h2 class="text-l font-semibold mb-4 text-gray-700">视频拼接序列</h2>
+                    <div id="stitching-panel" class="bg-gray-100 p-4 rounded border border-dashed border-gray-300 min-h-[100px]">
+                        <div id="clips-container" class="flex flex-wrap gap-3">
+                            <span id="clips-placeholder" class="text-gray-500 italic">从上方历史树中添加视频片段到此区域...</span>
+                        </div>
+                    </div>
+                    <button id="stitch-button" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:bg-gray-400">
+                        拼接视频
+                    </button>
+                    <div id="stitch-result" class="mt-3 text-center"></div>
+                </div>
+
             </div>
 
-            <div class="col-span-1">
-                <div class="bg-white rounded shadow p-6 sticky top-6">
+            <div class="col-span-1 overflow-y-auto">
+                <div class="bg-white rounded shadow p-6">
                     <h2 class="text-xl font-semibold mb-4 text-gray-700">工作流参数</h2>
                     <div id="workflow-form" class="space-y-4">
                         <div>
@@ -136,6 +155,9 @@
                                 <option value="ImageGenerateImage_Basic">ImageToImage</option>
                                 <option value="TextGenerateVideo">TextToVideo</option>
                                 <option value="ImageGenerateVideo">ImageToVideo</option>
+                                <option value="ImageMerging">ImageMerging</option>
+                                <option value="ImageCanny">ImageCanny</option>
+                                <option value="ImageGenerateImage_Canny">CannyToImage</option>
                             </select>
                         </div>
                         <div>
@@ -163,20 +185,7 @@
                 </div>
             </div>
         </main>
-        <div class="container mx-auto p-4 mt-8">
-            <div class="bg-white rounded shadow p-6">
-                <h2 class="text-xl font-semibold mb-4 text-gray-700">视频拼接序列</h2>
-                <div id="stitching-panel" class="bg-gray-100 p-4 rounded border border-dashed border-gray-300 min-h-[150px]">
-                    <div id="clips-container" class="flex flex-wrap gap-3">
-                        <span id="clips-placeholder" class="text-gray-500 italic">从上方历史树中添加视频片段到此区域...</span>
-                    </div>
-                </div>
-                <button id="stitch-button" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:bg-gray-400">
-                    拼接视频
-                </button>
-                <div id="stitch-result" class="mt-3 text-center"></div>
-            </div>
-        </div>
+        
 
     </div>
 
@@ -186,6 +195,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const DB_API_GET_URL = '/api/trees/1';
     const DB_API_POST_URL = '/api/nodes';
+    const ASSET_UPLOAD_URL = '/api/assets/upload';
     const COMFYUI_URL = 'http://223.193.6.178:8188';
 
     const statusEl = document.getElementById('status');
@@ -211,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    let selectedParentNodeId = null;
+    let selectedParentIds = [];
     let rootNodeId = null;
     let allNodes = [];
 
@@ -222,8 +232,71 @@ document.addEventListener('DOMContentLoaded', () => {
     function makeFullUrl(path) { if (!path) return null; if (path.startsWith('http://') || path.startsWith('https://')) return path; const cleanPath = path.startsWith('/') ? path : '/' + path; return COMFYUI_URL + cleanPath; }
     function openPreview(mediaUrl, type) { overlay.innerHTML = ''; overlay.style.display = 'flex'; overlay.className = 'overlay'; const modal = document.createElement('div'); modal.className = 'modal'; const closeBtn = document.createElement('div'); closeBtn.style.textAlign = 'right'; closeBtn.innerHTML = '<button class="px-3 py-1 bg-gray-200 rounded">关闭</button>'; closeBtn.querySelector('button').addEventListener('click', closePreview); modal.appendChild(closeBtn); if (type === 'video') { const v = document.createElement('video'); v.src = mediaUrl; v.controls = true; v.autoplay = true; modal.appendChild(v); } else { const img = document.createElement('img'); img.src = mediaUrl; img.alt = 'preview'; modal.appendChild(img); } overlay.appendChild(modal); overlay.addEventListener('click', (e) => { if (e.target === overlay) closePreview(); }); }
     function closePreview() { overlay.style.display = 'none'; overlay.innerHTML = ''; }
+    function updateSelectedNodeInput() {
+    if (selectedParentIds.length === 0) {
+        selectedNodeInput.value = '未选择 (将创建根节点)';
+    } else if (selectedParentIds.length === 1) {
+        selectedNodeInput.value = `已选择 (1): ${selectedParentIds[0].substring(0, 8)}...`;
+    } else {
+        // 专为 ImageMerging 优化提示
+        if (moduleSelect.value === 'ImageMerging' && selectedParentIds.length === 2) {
+             selectedNodeInput.value = `已选择 2 个节点 (合并就绪)`;
+        } else {
+             selectedNodeInput.value = `已选择 (${selectedParentIds.length}) 个节点`;
+        }
+    }
+}
 
-    // --- 【新增】片段处理相关函数 ---
+
+
+    // --- 【新增】处理文件上传并创建 Upload 节点的函数 ---
+    async function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // 显示加载状态 (可以使用按钮的加载状态，或者独立的上传状态提示)
+        statusEl.textContent = '正在上传图片并创建节点...';
+        // 禁用上传按钮和生成按钮，防止并发操作
+        imageUpload.disabled = true;
+        generateBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // 构造带查询参数的URL
+        let parentIdQuery = '';
+        let currentParentId = (selectedParentIds.length > 0 ? selectedParentIds[selectedParentIds.length - 1] : null) || rootNodeId || null; // 优先使用选中的(最后一个)，否则用根，否则null
+        if (currentParentId) {
+            parentIdQuery = `&parent_id=${currentParentId}`;
+        }
+        const uploadUrl = `${ASSET_UPLOAD_URL}?tree_id=${1}${parentIdQuery}`;
+
+        try {
+            const response = await fetch(uploadUrl, { method: 'POST', body: formData });
+            if (!response.ok) { const errText = await response.text(); throw new Error(`上传失败: ${errText}`); }
+
+            const updatedTree = await response.json(); // 后端返回更新后的树
+            processAndRenderTree(updatedTree, '上传成功！新节点已添加到历史树。'); // 使用新函数处理数据和渲染
+
+            // 找到新添加的 Upload 节点并自动选中它
+            const newUploadNode = findLatestUploadNode(updatedTree.nodes);
+            if (newUploadNode) {
+                selectedParentNodeId = newUploadNode.node_id;
+                selectedNodeInput.value = `已选择: ${newUploadNode.node_id.substring(0, 8)}... (上传)`;
+                // 下次 renderTree 时会自动高亮
+            }
+
+        } catch (error) {
+            console.error("处理上传失败:", error);
+            alert(`上传失败: ${error.message}`);
+            statusEl.textContent = '上传失败，请重试。';
+        } finally {
+            // 恢复按钮状态
+            imageUpload.disabled = false;
+            generateBtn.disabled = false;
+            imageUpload.value = ''; // 清空文件选择
+        }
+    }
 
     // 添加片段到拼接列表 (增加 isVideo 标记)
     function addClipToStitch(nodeData, type) {
@@ -387,102 +460,198 @@ document.addEventListener('DOMContentLoaded', () => {
         finally { stitchButton.disabled = false; stitchButton.textContent = '拼接视频'; }
     }
 
-    // 此函数现在将图片发送给我们自己的后端 app.py
-    async function uploadImage(file) {
-        const formData = new FormData();
-        formData.append('file', file);
+    // // 此函数现在将图片发送给我们自己的后端 app.py
+    // async function uploadImage(file) {
+    //     const formData = new FormData();
+    //     formData.append('file', file);
+
+    //     try {
+            
+    //         const response = await fetch('/api/assets/upload', {
+    //             method: 'POST',
+    //             body: formData
+    //         });
+
+    //         if (!response.ok) {
+    //             const errText = await response.text();
+    //             throw new Error(`上传请求失败: ${errText}`);
+    //         }
+    //         return await response.json();
+    //     } catch (error) {
+    //         console.error("上传图片失败的真实原因:", error);
+    //         alert('上传图片失败! (请检查控制台以获取详细错误)');
+    //         return null;
+    //     }
+    // }
+
+
+
+    // --- 【新增】删除节点的函数 ---
+    async function handleDeleteNode(nodeId, moduleId) {
+        // 1. 关键：向用户确认
+        const confirmMsg = `您确定要删除这个节点 (${moduleId || '节点'}) 吗？\n\n警告：这也会从数据库中删除所有依赖此节点的子孙节点！`;
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        // 2. 显示加载状态
+        showStatus(`正在删除节点 ${nodeId.substring(0, 8)}...`);
+        // 暂时禁用生成和上传按钮，防止冲突
+        generateBtn.disabled = true;
+        imageUpload.disabled = true;
 
         try {
-            
-            const response = await fetch('/api/assets/upload', {
-                method: 'POST',
-                body: formData
+            // 3. 定义 API URL
+            // 我们将使用 RESTful 风格: DELETE /api/nodes/NODE_ID
+            const DELETE_API_URL = '/api/nodes'; 
+            // 4. 发起 DELETE 请求
+            const response = await fetch(`${DELETE_API_URL}/${nodeId}`, {
+                method: 'DELETE'
             });
 
             if (!response.ok) {
                 const errText = await response.text();
-                throw new Error(`上传请求失败: ${errText}`);
+                throw new Error(`删除失败 (HTTP ${response.status}): ${errText}`);
             }
-            return await response.json();
+
+            // 5. 【重要】假设后端按约定返回了更新后的完整树
+            const updatedTree = await response.json();
+
+            // 6. 检查已删除的节点是否是当前选中的父节点
+            const indexInSelection = selectedParentIds.indexOf(nodeId); 
+            if (indexInSelection > -1) {     
+                selectedParentIds.splice(indexInSelection, 1); 
+            } 
+            updateSelectedNodeInput(); // <--- 更新文本框​
+            // 7. 使用后端返回的新数据重新渲染树
+            processAndRenderTree(updatedTree, '节点删除成功。');
+
         } catch (error) {
-            console.error("上传图片失败的真实原因:", error);
-            alert('上传图片失败! (请检查控制台以获取详细错误)');
-            return null;
+            console.error("删除节点时出错:", error);
+            alert(`删除失败: ${error.message}`);
+            showStatus('删除失败，请重试。');
+        } finally {
+            // 8. 恢复按钮
+            generateBtn.disabled = false;
+            imageUpload.disabled = false;
         }
     }
-    
+
+
+
+
     async function handleGenerate() {
         generateBtn.disabled = true;
         buttonText.textContent = '生成中...';
         buttonLoader.classList.remove('hidden');
+        imageUpload.disabled = true; // 生成时也禁用上传
+
         try {
-            let parentId = selectedParentNodeId;
-            if (!parentId) {
-                if (allNodes.length > 0) { parentId = rootNodeId; }
-                else { parentId = null; }
+            //let parentId = selectedParentNodeId;
+            let parentIds = [...selectedParentIds];
+            //let parentIds = [];
+
+            if (parentIds.length === 0) { // 未选择父节点
+                if (allNodes.length > 0) { parentIds.push(rootNodeId) }
             }
+
+            // if (parentId) { parentIds.push(parentId); }
 
             const moduleId = moduleSelect.value;
-            const parameters = {
-                positive_prompt: promptInput.value
-            };
+            const parameters = { positive_prompt: promptInput.value };
             const seed = document.getElementById('seed-input').value;
-            parameters.seed = seed ? parseInt(seed) : Math.floor(Math.random() * 1000000000);
-
+            parameters.seed = seed ? parseInt(seed) : Math.floor(Math.random() * 1000000000000000);
             ['steps', 'cfg', 'denoise'].forEach(id => {
                 const el = document.getElementById(`${id}-input`);
-                if (el.value) {
-                    parameters[id] = (id === 'cfg' || id === 'denoise') ? parseFloat(el.value) : parseInt(el.value);
-                }
+                if (el && el.value) { parameters[id] = (id === 'cfg' || id === 'denoise') ? parseFloat(el.value) : parseInt(el.value); }
             });
 
-            const uploadedFile = imageUpload.files[0];
-            if (uploadedFile) {
-                const uploadResult = await uploadImage(uploadedFile);
-                if (uploadResult?.name) { 
-                    parameters.image_input = { type: 'new_upload', filename: uploadResult.name };
-                } else {
-                    throw new Error('图片上传后未收到有效文件名');
-                }
-            } else if (moduleId === 'ImageGenerateImage_Basic' || moduleId === 'ImageGenerateVideo') {
-                if (selectedParentNodeId) {
-                    parameters.image_input = { type: 'from_node', node_id: selectedParentNodeId };
-                } else {
-                    alert('使用图生图/视频功能，请先选择一个父节点或上传一张图片。');
-                    throw new Error('缺少输入图片');
-                }
+            // 【核心变化】不再处理 new_upload
+            // 检查是否需要图像输入但缺少父节点
+            if ((moduleId === 'ImageGenerateImage_Basic' || moduleId === 'ImageGenerateVideo' || moduleId === 'PartialRepainting' || moduleId === 'ImageMerging'||
+                moduleId ==='ImageGenerateImage_Canny'||moduleId ==='CameraControl'||moduleId ==='ImageCanny'||moduleId ==='ImageHDRestoration'||
+                moduleId ==='PartialRepainting'||moduleId ==='Put_It_Here'||moduleId ==='RemoveBackground') && parentIds.length === 0) {
+                    alert('此模块需要输入图像/视频，请先选择一个包含媒体的父节点。');
+                    throw new Error('缺少父节点提供输入媒体');
             }
-            const payload = {
-                tree_id: 1,
-                parent_id: parentId,
-                module_id: moduleId,
-                parameters: parameters
-            };
+                // 【待扩展】Mask 和 Merging 需要特定的父节点数量检查
+                if (moduleId === 'ImageMerging' && parentIds.length !== 2) {
+                    alert('图像合并模块需要选择两个父节点。');
+                    throw new Error('图像合并需要两个父节点');
+                }
+                if (moduleId === 'PartialRepainting' && parentIds.length !== 1) {
+                    alert('局部重绘模块需要选择一个父节点。');
+                    throw new Error('局部重绘需要一个父节点');
+                }
+                // Mask 文件名需要前端在 parameters 中添加，例如 parameters.mask_filename = ...
 
-            const response = await fetch(DB_API_POST_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`生成失败: ${errText}`);
-            }
-            await loadAndRender();
+            const payload = { tree_id: 1, parent_ids: parentIds, module_id: moduleId, parameters: parameters };
+            const response = await fetch(DB_API_POST_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) { const errText = await response.text(); throw new Error(`生成失败: ${errText}`); }
+
+            const updatedTree = await response.json();
+            processAndRenderTree(updatedTree, '生成完成！新节点已添加到历史树。'); // 使用新函数处理
 
         } catch (error) {
             console.error(error);
-            if (error.message.includes('缺少输入图片')) {
-            } else {
-                 alert(error.message);
+            // 只对非用户操作错误进行 alert
+            if (!['缺少父节点', '需要两个父节点', '需要一个父节点'].some(msg => error.message.includes(msg))) {
+                alert(error.message);
             }
+            statusEl.textContent = '生成失败，请检查参数或父节点选择。';
         } finally {
             generateBtn.disabled = false;
-            buttonText.textContent = '开始生成';
+            buttonText.textContent = '基于父节点生成';
             buttonLoader.classList.add('hidden');
-            imageUpload.value = ''; // 清空文件选择
+            imageUpload.disabled = false;
+            // --- 【新增】生成后取消所有选择 ---             
+            selectedParentIds = []; // 1. 清空数组             
+            d3.selectAll('.node-card').classed('selected', false); // 2. 移除所有高亮             
+            updateSelectedNodeInput(); // 3. 更新文本框
+            // --- 结束 【新增】 ---
         }
     }
+
+ // --- 【新增】处理树数据并渲染的辅助函数 ---
+    function processAndRenderTree(treeData, statusMessage = '') {
+            if (treeData && treeData.nodes) {
+            allNodes = treeData.nodes;
+            const root = allNodes.find(n => n.parent_id === null);
+            rootNodeId = root ? root.node_id : null;
+
+            // --- 构建 D3 需要的数据结构 (与 loadAndRender 中相同) ---
+            const nodeMap = {};
+            allNodes.forEach(n => {
+                const parsedAssets = parseAssetsField(n.assets);
+                const firstMedia = firstMediaFromAssets(parsedAssets);
+                const media = firstMedia ? { rawPath: firstMedia.path, url: makeFullUrl(firstMedia.path), type: firstMedia.type } : null;
+                const firstParentId = Array.isArray(n.parent_id) ? n.parent_id[0] : n.parent_id;
+                nodeMap[n.node_id] = { id: n.node_id, parent_id: firstParentId, module_id: n.module_id, created_at: n.created_at, status: n.status, media: media };
+                // nodeMap[n.node_id] = { id: n.node_id, parent_id: n.parent_id, module_id: n.module_id, created_at: n.created_at, status: n.status, media: media };
+            });
+            const fakeRoot = { id: '__ROOT__', module_id: 'ROOT', children: [] };
+            Object.values(nodeMap).forEach(n => n.children = []);
+            Object.values(nodeMap).forEach(n => {
+                if (n.parent_id && nodeMap[n.parent_id]) { nodeMap[n.parent_id].children.push(n); }
+                else if (!n.parent_id) { fakeRoot.children.push(n); }
+            });
+
+            renderTree(fakeRoot); // 调用 D3 渲染
+            showStatus(statusMessage || '点击节点可设为父节点，点击缩略图可预览。');
+        } else {
+                console.error("接收到的树数据无效:", treeData);
+                showStatus("错误：无法处理或渲染树数据。");
+        }
+    }
+    
+        // 【新增】查找最新上传节点的辅助函数
+    function findLatestUploadNode(nodes) {
+        if (!nodes || nodes.length === 0) return null;
+        const uploadNodes = nodes.filter(n => n.module_id === 'Upload');
+        if (uploadNodes.length === 0) return null;
+        return uploadNodes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    }
+
 
     async function loadAndRender() {
         // ... 此函数完全不变 ...
@@ -504,7 +673,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parsedAssets = parseAssetsField(n.assets);
                 const firstMedia = firstMediaFromAssets(parsedAssets);
                 const media = firstMedia ? { rawPath: firstMedia.path, url: makeFullUrl(firstMedia.path), type: firstMedia.type } : null;
-                nodeMap[n.node_id] = { id: n.node_id, parent_id: n.parent_id, module_id: n.module_id, created_at: n.created_at, status: n.status, media: media };
+                // nodeMap[n.node_id] = { id: n.node_id, parent_id: n.parent_id, module_id: n.module_id, created_at: n.created_at, status: n.status, media: media };
+                const firstParentId = Array.isArray(n.parent_id) ? n.parent_id[0] : n.parent_id;
+                nodeMap[n.node_id] = { id: n.node_id, parent_id: firstParentId, module_id: n.module_id, created_at: n.created_at, status: n.status, media: media };
             });
 
             const fakeRoot = { id: '__ROOT__', module_id: 'ROOT', children: [] };
@@ -533,6 +704,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const g = svg.append('g').attr('transform', `translate(80, ${height/2})`);
         const zoom = d3.zoom().scaleExtent([0.1, 2.5]).on('zoom', (event) => g.attr('transform', event.transform));
         svg.call(zoom);
+        // --- 【新增】点击SVG空白处，取消所有选择 ---
+        svg.on('click', (event) => {
+            // event.stopPropagation(); // 可选：如果SVG外层还有监听器，则需要
+            selectedParentIds = []; // 1. 清空数组
+            d3.selectAll('.node-card').classed('selected', false); // 2. 移除所有高亮
+            updateSelectedNodeInput(); // 3. 更新文本框
+        });
+        // --- 结束 【新增】 ---
 
         const root = d3.hierarchy(rootData, d => d.children);
         const treeLayout = d3.tree().nodeSize([180, 220]);
@@ -543,7 +722,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         node.each(function(d) {
             const fo = d3.select(this).append('foreignObject').attr('width', 140).attr('height', 140).style('overflow', 'visible');
-            const div = fo.append('xhtml:div').attr('class', 'node-card').style('cursor', 'pointer');
+            //const div = fo.append('xhtml:div').attr('class', 'node-card').style('cursor', 'pointer');
+            const div = fo.append('xhtml:div').attr('class', 'node-card group').style('cursor', 'pointer');
             div.on('click', function(event) {
                 event.stopPropagation();
                 selectedParentNodeId = d.data.id;
@@ -551,6 +731,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 d3.selectAll('.node-card').classed('selected', false);
                 d3.select(this).classed('selected', true);
             });
+
+            // const div = fo.append('xhtml:div').attr('class', 'node-card group').style('cursor', 'pointer');
+
+            // 【新增】让节点在重绘时保持选中状态
+            // div.classed('selected', selectedParentIds.includes(d.data.id));
+            // div.on('click', function(event) {
+            //     event.stopPropagation();
+            //     const nodeId = d.data.id;
+            //     const card = d3.select(this);
+            //     // 检查是否已在数组中
+            //     const index = selectedParentIds.indexOf(nodeId);
+            //     if (index > -1) {
+            //         // 已存在，取消选择
+            //         selectedParentIds.splice(index, 1);
+            //         card.classed('selected', false);
+            //     } else {
+            //         // 不存在，加入选择
+            //         selectedParentIds.push(nodeId);
+            //         card.classed('selected', true);
+            //     }
+            //     // 更新顶部的文本框
+            //     updateSelectedNodeInput();
+            // });
+            
+            ////////////////新加删除符号/////////////////
+            //if (d.data.parent_id !== null && d.data.module_id !== 'ROOT') {
+            if (d.data.module_id !== 'Init' && d.data.module_id !== 'ROOT') {
+                div.append('xhtml:button')
+                    .attr('class', 'absolute top-1 left-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-70 hover:opacity-100 z-10 transition-opacity duration-150')
+                    .style('font-size', '11px') // 让 'X' 更美观
+                    .text('X')
+                    .on('click', (event) => {
+                        event.stopPropagation(); // 阻止触发节点的选择事件
+                        handleDeleteNode(d.data.id, d.data.module_id);
+                    });
+            }
+            // --- 结束 【新增】删除按钮 ---
 
             if (d.data.media && d.data.media.rawPath) {
                 const rawPath = d.data.media.rawPath;
@@ -561,7 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     /////////视频加"+"按钮/////////////
                     if (canAddToStitch) {
                         div.append('xhtml:button')
-                        .attr('class', 'absolute bottom-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-80 hover:opacity-100')
+                        .attr('class', 'absolute bottom-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
                         .text('+')
                         .on('click', (event) => {
                             event.stopPropagation(); // 阻止触发节点的选择事件
@@ -576,7 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     /////////图片加"+"按钮/////////////
                     if (canAddToStitch) {
                         div.append('xhtml:button')
-                        .attr('class', 'absolute bottom-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-80 hover:opacity-100')
+                        .attr('class', 'absolute bottom-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
                         .text('+')
                         .on('click', (event) => {
                             event.stopPropagation(); // 阻止触发节点的选择事件
@@ -598,6 +815,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePreview(); });
     generateBtn.addEventListener('click', handleGenerate);
+    imageUpload.addEventListener('change', handleFileUpload);
     stitchButton.addEventListener('click', handleStitchRequest); // 【新增】拼接按钮监听
     loadAndRender();
 });

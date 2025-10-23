@@ -105,7 +105,7 @@
   "124": {
     "inputs": {
       "pixels": [
-        "146",
+        "191",
         0
       ],
       "vae": [
@@ -128,26 +128,6 @@
     "class_type": "ConditioningZeroOut",
     "_meta": {
       "title": "条件零化"
-    }
-  },
-  "146": {
-    "inputs": {
-      "direction": "down",
-      "match_image_size": true,
-      "spacing_width": 0,
-      "spacing_color": "white",
-      "image1": [
-        "191",
-        0
-      ],
-      "image2": [
-        "268",
-        0
-      ]
-    },
-    "class_type": "ImageStitch",
-    "_meta": {
-      "title": "Image Stitch"
     }
   },
   "177": {
@@ -175,19 +155,6 @@
       "title": "LoadImage"
     }
   },
-  "194": {
-    "inputs": {
-      "filename_prefix": "pl-kontext-dev",
-      "images": [
-        "236",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "保存图像"
-    }
-  },
   "197": {
     "inputs": {
       "lora_name": "refcontrol_canny.safetensors",
@@ -200,26 +167,6 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "LoRA加载器（仅模型）"
-    }
-  },
-  "236": {
-    "inputs": {
-      "direction": "up",
-      "match_image_size": true,
-      "spacing_width": 0,
-      "spacing_color": "white",
-      "image1": [
-        "146",
-        0
-      ],
-      "image2": [
-        "8",
-        0
-      ]
-    },
-    "class_type": "ImageStitch",
-    "_meta": {
-      "title": "Image Stitch"
     }
   },
   "261": {
@@ -244,15 +191,6 @@
     "class_type": "EmptyLatentImage",
     "_meta": {
       "title": "Size_Setting"
-    }
-  },
-  "268": {
-    "inputs": {
-      "image": "线稿_00001_.png"
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "加载图像（线稿）"
     }
   }
 }
