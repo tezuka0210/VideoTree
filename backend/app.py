@@ -479,135 +479,6 @@ def create_node():
         if guidance_node_id and 'guidance' in parameters:
             workflow[guidance_node_id]["inputs"]["guidance"] = parameters['guidance']
 
-        
-    # IMAGE
-    # image_input_node_id = find_node_id_by_title(workflow, "LoadImage")
-    # if image_input_node_id and 'image_input' in parameters:
-    #     image_input_info = parameters['image_input']
-    #     image_filename = None
-    #     # 场景1: 图像来自一个已存在的节点   
-    #     if image_input_info.get('type') == 'from_node':
-    #         source_node_id = image_input_info.get('node_id')
-    #         source_node = database.get_node(source_node_id)
-    #         if source_node and source_node.get('assets', {}).get('images'):
-    #             image_url = source_node['assets']['images'][0]
-    #             parsed_url = urllib.parse.urlparse(image_url)
-    #             query_params = urllib.parse.parse_qs(parsed_url.query)
-                
-    #             filename = query_params.get('filename', [None])[0]
-    #             subfolder = query_params.get('subfolder', [''])[0]
-                
-    #             if filename:
-    #             # 构建源文件和目标文件的完整路径
-    #                 source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-    #                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-    #                 # 检查源文件是否存在，然后复制
-    #                 if os.path.exists(source_path):
-    #                     try:
-    #                         with open(source_path, 'rb') as f_read:
-    #                             with open(destination_path, 'wb') as f_write:
-    #                                 f_write.write(f_read.read())
-    #                         image_filename = filename
-    #                         print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
-    #                     except IOError as e:
-    #                         print(f"    -  错误: 文件复制失败: {e}")
-    #                 else:
-    #                     print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
-
-                
-    #      # 场景2: 图像是用户新上传的
-    #     elif image_input_info.get('type') == 'new_upload':
-    #         # 直接使用上传接口返回的路径，并提取文件名
-    #         # 注意：这要求ComfyUI能访问到这个'assets'文件夹
-    #         image_filename = image_input_info.get('filename')
-                
-    #     # 如果成功获取了文件名，则注入到工作流中
-    #     if image_filename:
-    #         workflow[image_input_node_id]["inputs"]["image"] = image_filename
-    #     else:
-    #         print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
-
-    # IMAGE MOVE
-    # image_move_input_node_id = find_node_id_by_title(workflow, "LoadImage(Move)")
-    # if image_move_input_node_id and 'image_input' in parameters:
-    #     image_move_input_info = parameters['image_input']
-    #     image_filename = None
-    #     # 场景1: 图像来自一个已存在的节点   
-    #     if source_node and source_node.get('assets', {}).get('images'):
-    #             image_url = source_node['assets']['images'][0]
-    #             parsed_url = urllib.parse.urlparse(image_url)
-    #             query_params = urllib.parse.parse_qs(parsed_url.query)
-                
-    #             filename = query_params.get('filename', [None])[0]
-    #             subfolder = query_params.get('subfolder', [''])[0]
-                
-    #             if filename:
-    #             # 构建源文件和目标文件的完整路径
-    #                 source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-    #                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-    #                 # 检查源文件是否存在，然后复制
-    #                 if os.path.exists(source_path):
-    #                     try:
-    #                         with open(source_path, 'rb') as f_read:
-    #                             with open(destination_path, 'wb') as f_write:
-    #                                 f_write.write(f_read.read())
-    #                         image_filename = filename
-    #                         print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
-    #                     except IOError as e:
-    #                         print(f"    -  错误: 文件复制失败: {e}")
-    #                 else:
-    #                     print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
-                
-    #      # 场景2: 图像是用户新上传的
-    #     elif image_move_input_info.get('type') == 'new_upload':
-    #         image_filename = image_input_info.get('filename')
-    #     if image_filename:
-    #         workflow[image_input_node_id]["inputs"]["image"] = image_filename
-    #     else:
-    #         print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
-
-    # # IMAGE MASK
-    # image_mask_input_node_id = find_node_id_by_title(workflow, "LoadImage(Mask)")
-    # if image_mask_input_node_id and 'image_input' in parameters:
-    #     image_mask_input_info = parameters['image_input']
-    #     image_filename = None
-    #     # 场景1: 图像来自一个已存在的节点   
-    #     if image_mask__input_info.get('type') == 'from_node':
-    #         source_node_id = image_mask__input_info.get('node_id')
-    #         source_node = database.get_node(source_node_id)
-    #         if source_node and source_node.get('assets', {}).get('images'):
-    #             image_url = source_node['assets']['images'][0]
-    #             parsed_url = urllib.parse.urlparse(image_url)
-    #             query_params = urllib.parse.parse_qs(parsed_url.query)
-                
-    #             filename = query_params.get('filename', [None])[0]
-    #             subfolder = query_params.get('subfolder', [''])[0]
-                
-    #             if filename:
-    #             # 构建源文件和目标文件的完整路径
-    #                 source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-    #                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-    #                 # 检查源文件是否存在，然后复制
-    #                 if os.path.exists(source_path):
-    #                     try:
-    #                         with open(source_path, 'rb') as f_read:
-    #                             with open(destination_path, 'wb') as f_write:
-    #                                 f_write.write(f_read.read())
-    #                         image_filename = filename
-    #                         print(f"    - 已将文件 '{filename}' 从output手动复制到input目录。")
-    #                     except IOError as e:
-    #                         print(f"    -  错误: 文件复制失败: {e}")
-    #                 else:
-    #                     print(f"    - 错误: 源文件 '{source_path}' 不存在，无法复制。")
-                
-    #      # 场景2: 图像是用户新上传的
-    #     elif image_mask_input_info.get('type') == 'new_upload':
-    #          image_filename = image_input_info.get('filename')
-    #     if image_filename:
-    #         workflow[image_input_node_id]["inputs"]["image"] = image_filename
-    #     else:
-    #         print(f"警告：无法从 image_input 参数中解析出有效的图像文件名。")
-
 
     # try:
         # --- 调用ComfyUI并等待结果 ---
@@ -652,7 +523,7 @@ def stitch_videos():
 
     moviepy_clips = [] # 用于存放 VideoFileClip 或 ImageClip 对象
     default_image_duration = 3 # 图片作为视频片段的默认时长（秒）
-    target_fps = 24 # 目标输出帧率 (可以根据需要调整)
+    target_fps = 16 # 目标输出帧率 (可以根据需要调整)
 
     try:
         # --- 1. 将相对路径转换为绝对路径并创建 MoviePy Clip 对象 ---
@@ -695,18 +566,43 @@ def stitch_videos():
             if clip_type == 'video':
                 print(f"加载视频: {full_path}")
                 video_clip = VideoFileClip(full_path)
-                # 可选：统一设置帧率，避免拼接问题
-                # if video_clip.fps != target_fps:
-                #     print(f"  调整帧率从 {video_clip.fps} 到 {target_fps}")
-                #     video_clip = video_clip.set_fps(target_fps)
-                moviepy_clips.append(video_clip)
+                # --- 【新增】读取前端传来的裁剪参数 ---
+                start_time = clip_info.get('startTime') # 可能是 None
+                end_time = clip_info.get('endTime')   # 可能是 None
+                # 如果前端提供了合法的起止时间，则使用它们
+                # (注意：moviepy 的 subclip 允许 None 作为参数，表示“到开头”或“到结尾”)
+                # 我们需要做更严格的检查，确保 None 被转换为 0 和 clip.duration
+                final_start = 0
+                if start_time is not None:
+                    final_start = float(start_time)
+
+                final_end = video_clip.duration
+                if end_time is not None and float(end_time) <= video_clip.duration:
+                    final_end = float(end_time)
+                # 防止无效时间
+                if final_start >= final_end:
+                    final_start = 0
+                    final_end = video_clip.duration
+
+                print(f"  裁剪视频从 {final_start}s 到 {final_end}s")
+                # 使用 subclip 创建裁剪后的片段
+                trimmed_clip = video_clip.subclipped(final_start, final_end)
+                # --- 【修改】将裁剪后的片段(trimmed_clip)加入列表 ---
+                moviepy_clips.append(trimmed_clip)
+                # --- 【新增】立即关闭原始视频文件句柄，释放资源 ---
+                #video_clip.close()
             else: # 图片
-                print(f"加载图片并创建为 {default_image_duration} 秒片段: {full_path}")
-                # 【核心修正】先创建 ImageClip，然后直接设置 duration 属性
-                image_clip = ImageClip(full_path)
-                image_clip.duration = default_image_duration
-                # 【核心修正】设置 fps 属性 (注意：是 fps 不是 set_fps 方法)
-                image_clip.fps = target_fps
+                # --- 【修改】读取前端传来的时长参数 ---                 
+                duration = clip_info.get('duration') # 可能是 None
+                if duration is None or float(duration) <= 0:                     
+                    final_duration = default_image_duration                 
+                else:                     
+                    final_duration = float(duration) # 确保是数字                                  
+                print(f"加载图片并创建为 {final_duration} 秒片段: {full_path}")                                 
+                image_clip = ImageClip(full_path)                 
+                # --- 【修改】使用从前端获取的时长 ---                 
+                image_clip.duration = final_duration                  
+                image_clip.fps = target_fps                 
                 moviepy_clips.append(image_clip)
 
         if not moviepy_clips:

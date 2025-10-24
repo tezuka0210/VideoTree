@@ -10,7 +10,7 @@
   },
   "7": {
     "inputs": {
-      "low_threshold": 0.4,
+      "low_threshold": 0.1,
       "high_threshold": 0.8,
       "image": [
         "6",
