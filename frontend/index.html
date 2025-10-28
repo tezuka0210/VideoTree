@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vite App</title>
+
+    <style>
+      html {
+        /* 确保 html 占满 */
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        /* * 这是你原始 <body class="... h-screen flex flex-col"> 的 CSS 翻译
+         * h-screen -> height: 100vh (视口高度，这是一个固定的值)
+         * flex flex-col -> display: flex; flex-direction: column;
+         */
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        /* 防止滚动和溢出 */
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      #app {
+        /* * #app 必须填满 <body>
+         * h-full -> height: 100% (100% 的 100vh)
+         * flex flex-col -> 它也必须是一个 flex 容器来约束 App.vue
+         */
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+    </style>
+    </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+html, body {
+    height: 100%; /* 关键：让 html 和 body 占满全高 */
+    margin: 0;
+    overflow: hidden; /* 关键：禁止整个页面滚动 */
+}
+#app {
+    height: 100%;
+}
+.node-card {
+    width: 140px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    border: 2px solid #e5e7eb;
+    transition: border-color 0.2s;
+}
+.node-card.selected {
+    border-color: #3b82f6;
+}
+.thumb {
+    width: 140px;
+    height: 100px;
+    object-fit: cover;
+    background: #f3f4f6;
+    display: block;
+}
+.node-label {
+    padding: 6px 8px;
+    font-size: 12px;
+    color: #111827;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.link {
+    fill: none;
+    stroke: #9ca3af;
+    stroke-width: 2px;
+}
+.overlay {
+    position: fixed;
+    left: 0; top: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+.modal {
+    background: #fff;
+    border-radius: 8px;
+    max-width: 90%;
+    max-height: 90%;
+    padding: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    overflow: auto;
+}
+.modal img, .modal video {
+    max-width: 100%;
+    max-height: 80vh;
+    display: block;
+    margin: 0 auto;
+}
+.clip-item {
+    position: relative;
+    cursor: grab;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 2px;
+    background: white;
+    transition: transform 0.2s;
+}
+.clip-item img, .clip-item video { /* 统一用img显示缩略图，简化 */
+    width: 100px;
+    height: 60px;
+    object-fit: cover;
+    display: block;
+}
+.clip-item .remove-btn {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: rgba(239, 68, 68, 0.8); /* Red-500 with opacity */
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid white;
+}
+.clip-item.dragging { /* 拖拽时的样式 */
+    opacity: 0.5;
+    transform: scale(1.05);
+}
+.drag-over { /* 拖放目标区域的样式 */
+    border-style: solid;
+    border-color: #3b82f6; /* Blue-500 */
+}
+/* 覆盖掉 .clip-item 的固定宽度 */
+.clip-item {
+    position: relative;
+    cursor: grab;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 2px;
+    background: white;
+    transition: transform 0.2s;
+    /* 【新增】取消固定宽度，允许 JS 控制 */
+    /* width: 100px; */
+    flex-shrink: 0; /* 防止项目在 flex 布局中被压缩 */
+}
+
+/* 【新增】修改 clips-container 为水平滚动 */
+#clips-container {
+    display: flex;
+    flex-wrap: nowrap; /* 关键：不换行 */
+    gap: 8px;
+    overflow-x: auto;  /* 关键：允许水平滚动 */
+    padding-bottom: 8px; /* 为滚动条留出空间 */
+}
+
+
+.loader { border-top-color: #3498db; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

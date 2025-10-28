@@ -234,7 +234,7 @@ def view_file():
                 rv = Response(data, 206, mimetype=mime_type)
                 rv.headers.add("Content-Range", f"bytes {start}-{end}/{file_size}")
                 rv.headers.add("Accept-Ranges", "bytes")
-                rv.headers.add("Content-Length", str(length))
+                #rv.headers.add("Content-Length", str(length))
                 rv.headers.add("X-Content-Type-Options", "nosniff")
                 return rv
             else:
