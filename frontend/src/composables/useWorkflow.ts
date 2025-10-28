@@ -93,7 +93,7 @@ export function useWorkflow() {
   // 节点数据
   const allNodes = ref<AppNode[]>([]) // D3 将会监听这个
   const rootNodeId = ref<string | null>(null)
-  const selectedParentIds = reactive<string[]>([]) // 选中的父节点
+  const selectedParentIds = ref<string[]>([]) // 选中的父节点
 
   // 视频拼接
   const stitchingClips = reactive<StitchingClip[]>([])
@@ -252,7 +252,7 @@ export function useWorkflow() {
 
     // 确定父节点
     let parentIdQuery = ''
-    let currentParentId = (selectedParentIds.length > 0 ? selectedParentIds[selectedParentIds.length - 1] : null) || rootNodeId.value || null
+    let currentParentId = (selectedParentIds.value.length > 0 ? selectedParentIds.value[selectedParentIds.value.length - 1] : null) || rootNodeId.value || null
     if (currentParentId) {
       parentIdQuery = `&parent_id=${currentParentId}`
     }
@@ -287,7 +287,7 @@ export function useWorkflow() {
     showStatus('开始生成...')
 
     try {
-      let parentIds = [...selectedParentIds] // 复制
+      let parentIds = [...selectedParentIds.value] // 复制
       if (parentIds.length === 0 && allNodes.value.length > 0 && rootNodeId.value) {
         // (策略) 如果未选择，自动使用根节点 (如果存在)
         // parentIds.push(rootNodeId.value)
@@ -322,7 +322,7 @@ export function useWorkflow() {
       const updatedTree: { nodes: DbNode[] } = await response.json()
       processTreeData(updatedTree.nodes, '生成完成！新节点已添加到历史树。')
       // (重要) 生成后清空选择
-      selectedParentIds.length = 0
+      selectedParentIds.value.length = 0
 
     } catch (error: any) {
       console.error(error)
@@ -357,9 +357,9 @@ export function useWorkflow() {
       }
 
       // 6. 检查已删除的节点是否是当前选中的父节点
-      const indexInSelection = selectedParentIds.indexOf(nodeId)
+      const indexInSelection = selectedParentIds.value.indexOf(nodeId)
       if (indexInSelection > -1) {
-        selectedParentIds.splice(indexInSelection, 1)
+        selectedParentIds.value.splice(indexInSelection, 1)
       }
 
       // 7. (重要) 后端删除成功，调用 loadAndRender 重新加载整个树

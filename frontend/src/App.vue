@@ -47,7 +47,7 @@
 
 <script setup lang="ts">
 // --- 1. 导入 Vue 核心功能 ---
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 
 // --- 2. 导入我们的 Composable (状态和逻辑) ---
 import { useWorkflow } from '@/composables/useWorkflow'
@@ -82,6 +82,16 @@ const {
   openPreview,
   closePreview,
 } = useWorkflow()
+
+
+// 这个 watch 会告诉我们 App.vue 的“父状态”是否真的更新了
+watch(selectedParentIds, (newIds) => {
+  console.log(
+    `%c[App] 3. 状态已更新 (selectedParentIds)`,
+    'color: #FF69B4; font-weight: bold;',
+    newIds
+  );
+}, { deep: true });
 
 // --- 5. App.vue 自己的本地状态 ---
 // 用于存储拼接完成后的下载 URL

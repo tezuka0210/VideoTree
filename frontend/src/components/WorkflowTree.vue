@@ -42,6 +42,27 @@ let resizeObserver: ResizeObserver | null = null
  * @param allNodesData 所有的节点数据 (来自 props.nodes)
  * @param selectedIds 选中的节点ID (来自 props.selectedIds)
  */
+
+function updateSelectionStyles(svgElement: SVGSVGElement, selectedIds: string[]) {
+  // 1. (安全检查) 确保 D3 节点存在
+  const nodes = d3.select(svgElement).selectAll<SVGGElement, d3.HierarchyNode<any>>('.node');
+  nodes.each(function(d) {
+    // 确保 d 和 d.data 存在
+    if (d && d.data) {
+      const nodeId = d.data.id;
+      // 2. 找到这个节点对应的卡片
+      const card = d3.select(this).select<HTMLDivElement>('.node-card');
+      if (selectedIds.includes(nodeId)) {
+        // 3. 如果 ID 在列表中，添加 'selected'
+        card.classed('selected', true);
+      } else {
+        // 4. 否则，移除 'selected'
+        card.classed('selected', false);
+      }
+    }
+  });
+}
+
 function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selectedIds: string[]) {
   // --- A. 数据准备 ---
   // 1. 清空之前的 SVG 内容
@@ -124,10 +145,17 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
 
   // 3. (重要) SVG 背景点击事件 -> 清空所有选择
   svg.on('click', (event) => {
-    // 确保点击的是 SVG 背景，而不是子元素 (因为子元素会 stopPropagation)
-    /*if (event.target === svgElement) {
-      emit('update:selectedIds', [])
-    }*/
+    console.log("--- 1. 背景被点击 --- (立即取消全选)"); 
+    // (关键) 1. 立即更新 DOM
+    svgElement.querySelectorAll('.node-card').forEach(card => {
+      card.classList.remove('selected');
+    });
+    console.log(         
+        `%c[Tree] 1. 背景被点击 -> EMITTING 'update:selectedIds'`,          
+        'color: #BADA55; font-weight: bold;',          
+        [] // 打印出我们将要发送的新数组       
+      );
+    // 2. (最后) 再去通知 Vue 更新状态
     emit('update:selectedIds', [])
   })
 
@@ -165,12 +193,53 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
       .attr('class', 'node-card group') // 使用 style.css 中的 .node-card
       .style('cursor', 'pointer')
       .style('position','relative')
+    
+    const divNode = div.node()! as HTMLDivElement; 
+
+    divNode.addEventListener('mousedown', (event) => {
+      event.stopPropagation();
+    });
+    // (正确实现 1)
+    // 这是“选中”的逻辑。因为 mousedown 已被 fo 拦截，
+    // 这个 click 监听器现在 100% 可靠。
+    // /frontend/src/components/WorkflowTree.vue
+    // (核心修复)
+    // 这是“选中”的逻辑
+    divNode.addEventListener('click', (event) => {
+      console.log("--- 2. 节点卡片被点击 --- (立即多选)");
+      event.stopPropagation(); // 阻止冒泡到 SVG 背景 (取消全选)
+      const nodeId = d.data.id;
+      // (关键) 1. 从 props 读取当前状态 (v24 的多选逻辑)
+      const currentSelectedIds = [...props.selectedIds];
+      const index = currentSelectedIds.indexOf(nodeId);
+      //let newSelectedIds: string[];
+
+      if (index > -1) {
+        // (v24 logic) 它已经被选中了，从数组中移除
+        currentSelectedIds.splice(index, 1);
+        // (v25 logic) 立即更新 DOM (移除蓝色边框)
+        divNode.classList.remove('selected');
+      } else {
+        // (v24 logic) 它未被选中，添加到数组
+        currentSelectedIds.push(nodeId);
+        // (v25 logic) 立即更新 DOM (添加蓝色边框)
+        divNode.classList.add('selected');
+      }
+      // 2. (最后) 再去通知 Vue 更新正确的完整状态
+      //newSelectedIds = currentSelectedIds;
+      console.log(         
+        `%c[Tree] 1. 节点被点击 -> EMITTING 'update:selectedIds'`,          
+        'color: #BADA55; font-weight: bold;',          
+        currentSelectedIds // 打印出我们将要发送的新数组       
+      );
+      emit('update:selectedIds', currentSelectedIds);
+    });
 
     // 2. (核心) 根据 props.selectedIds 更新选中样式
     div.classed('selected', selectedIds.includes(d.data.id))
 
     // 3. (核心) 节点点击事件 -> 更新选中
-    div.on('click', function (event) {
+    /*div.on('click', function (event) {
       event.stopPropagation() // 阻止事件冒泡到 SVG 背景
       const nodeId = d.data.id
       // (Vue 方式) 创建一个新数组来触发响应式
@@ -183,42 +252,27 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
       }
       // (核心) emit 事件，通知 App.vue 更新 v-model
       emit('update:selectedIds', newSelectedIds)
-    })
+    })*/
 
-    // D3 的 .on('click', ...) 在 foreignObject 中不可靠
-    // 使用原生的 addEventListener 来替代它
-    // 1. 获取 div 的 DOM 节点
-    /*const divNode = div.node()! as HTMLDivElement; 
-    // 2. 在 DOM 节点上添加原生点击事件
-    divNode.addEventListener('click', (event) => {
-      event.stopPropagation(); // 阻止冒泡到 SVG 背景
-      const nodeId = d.data.id;
-
-      // (正确) 我们从 props 读取当前的 ID
-      const currentSelectedIds = [...props.selectedIds];
-      const index = currentSelectedIds.indexOf(nodeId);
-
-      if (index > -1) {
-        currentSelectedIds.splice(index, 1);
-      } else {
-        currentSelectedIds.push(nodeId);
-      }
-      // (正确) emit 更新
-      emit('update:selectedIds', currentSelectedIds);
-    });*/
     // 4. 删除按钮
     if (d.data.module_id !== 'Init' && d.data.module_id !== 'ROOT') {
-      div.append('xhtml:button')
-        // (Tailwind) 这是你原 CSS 中按钮的样式
+      // (核心修复)
+      // 1. 创建元素并获取有类型的 DOM 节点
+      const deleteBtn = div.append('xhtml:button')
         .attr('class', 'bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-70 hover:opacity-100 z-10 transition-opacity duration-150')
         .style('font-size', '11px')
+        .style('position', 'absolute')
+        .style('top', '4px')
+        .style('left', '4px')
         .text('X')
-        .on('click', (event) => {
-          event.stopPropagation()
-          emit('delete-node', d.data.id) // (核心) emit 删除事件
-        })
-    }
+        .node()! as HTMLButtonElement; // <-- 1. 获取节点并断言类型
 
+      // 2. 在有类型的节点上添加监听器
+      deleteBtn.addEventListener('click', (event) => {
+        event.stopPropagation(); // 阻止冒泡到 divNode (选中)
+        emit('delete-node', d.data.id);
+      });
+    }
      // 5. 渲染媒体 (图片/视频) (1:1 恢复版)
     if (d.data.media && d.data.media.rawPath) {
       const mediaUrl = d.data.media.url
@@ -227,15 +281,20 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
 
       if (isVideo) {
           // --- 视频的 "+" 按钮 (来自 index.html) ---
-          if (canAddToStitch) {
-              div.append('xhtml:button')
-              .attr('class', 'bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
-              .text('+')
-              .style('position','absolute')
-              .style('bottom','4px')
-              .style('right','4px')
-              .on('click', (event) => {
-                  event.stopPropagation();
+            if (canAddToStitch) {
+              // (核心修复)
+              // 1. 创建元素并获取有类型的 DOM 节点
+              const addVideoBtn = div.append('xhtml:button')
+                .attr('class', 'bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
+                .text('+')
+                .style('position','absolute')
+                .style('bottom','4px')
+                .style('right','4px')
+                .node()! as HTMLButtonElement; // <-- 1. 获取节点并断言类型
+
+              // 2. 在有类型的节点上添加监听器
+              addVideoBtn.addEventListener('click', (event) => {
+                  event.stopPropagation(); // 阻止冒泡到 divNode (选中)
                   emit('add-clip', d.data, 'video');
               });
           }
@@ -251,22 +310,31 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
           videoEl.muted = true;
           videoEl.playsInline = true;
           videoEl.src = mediaUrl;
+          videoEl.addEventListener('mousedown', (ev) => {
+            ev.stopPropagation();
+          });
           videoEl.addEventListener('click', (ev) => {
+            console.log("---- 3.缩略图被打开 选中")
             ev.stopPropagation();
             emit('open-preview', mediaUrl, 'video'); 
           });
 
       } else {
           // --- 图片的 "+" 按钮 (来自 index.html) ---
-          if (canAddToStitch) {
-              div.append('xhtml:button')
-              .attr('class', 'bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
-              .text('+')
-              .style('position','absolute')
-              .style('bottom','4px')
-              .style('right','4px')
-              .on('click', (event) => {
-                  event.stopPropagation();
+            if (canAddToStitch) {
+              // (核心修复)
+              // 1. 创建元素并获取有类型的 DOM 节点
+              const addImageBtn = div.append('xhtml:button')
+                .attr('class', 'bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
+                .text('+')
+                .style('position','absolute')
+                .style('bottom','4px')
+                .style('right','4px')
+                .node()! as HTMLButtonElement; // <-- 1. 获取节点并断言类型
+
+              // 2. 在有类型的节点上添加监听器
+              addImageBtn.addEventListener('click', (event) => {
+                  event.stopPropagation(); // 阻止冒泡到 divNode (选中)
                   emit('add-clip', d.data, 'image');
               });
           }
@@ -276,7 +344,11 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
             .attr('src', mediaUrl)
             .attr('alt', d.data.module_id || 'thumb')
             .node()! as HTMLImageElement;
+          imgEl.addEventListener('mousedown', (ev) => {
+            ev.stopPropagation();
+          });
           imgEl.addEventListener('click', (ev) => {
+            console.log("---- 3.缩略图被打开 选中")
             ev.stopPropagation();
             emit('open-preview', mediaUrl, 'image'); 
           });
@@ -308,16 +380,35 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
 
 // (核心) 监听 props 的变化，并在变化时重绘 D3
 watch(
-  [() => props.nodes, () => props.selectedIds],
-  ([newNodes, newSelectedIds]) => {
+  () => props.nodes, // <-- 只监听 nodes
+  (newNodes) => {
+    console.log("%c[Tree] WATCH (Nodes) -> 重绘整棵树", "color: red; font-weight: bold;");
     if (svgContainer.value) {
-      // 当 allNodes 或 selectedParentIds 变化时，
-      // 使用新数据重新调用 D3 渲染函数
-      renderTree(svgContainer.value, newNodes, newSelectedIds)
+      renderTree(svgContainer.value, newNodes, props.selectedIds)
     }
   },
-  { deep: true } // 深度监听 nodes 数组内部的变化
-)
+  { deep: true } 
+);
+
+// (核心修复 v33)
+// 监听器 2: (快)  <-- 你很可能缺少这个！
+// 只在 选中ID(selectedIds) 变化时，才调用*快速*的样式更新函数
+watch(
+  () => props.selectedIds, // <-- 只监听 selectedIds
+  (newSelectedIds) => {
+    // VVVV 这是你想要的日志 VVVV
+    console.log(
+      `%c[Tree]2. WATCH (selectedIds) -> 正在更新样式`,
+      "color: #209CEE; font-weight: bold;",
+      newSelectedIds // 打印出它收到的新数组
+    );
+    // ^^^^ 这是你想要的日志 ^^^^
+    if (svgContainer.value) {
+      updateSelectionStyles(svgContainer.value, newSelectedIds);
+    }
+  },
+  { deep: true }
+);
 
 onMounted(() => {
   const container = svgContainer.value

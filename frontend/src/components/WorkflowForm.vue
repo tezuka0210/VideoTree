@@ -100,14 +100,14 @@
       <div class="pt-2">
         <button
           id="generate-btn"
-          :disabled="props.isGenerating"
+          :disabled="isGenerating"
           @click="onGenerateClick"
           class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:bg-gray-400"
         >
-          <span id="button-text">{{ props.isGenerating ? '生成中...' : '开始生成' }}</span>
+          <span id="button-text">{{isGenerating ? '生成中...' : '开始生成' }}</span>
           <div
             id="button-loader"
-            :class="['loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 ml-3', { 'hidden': !props.isGenerating }]"
+            :class="['loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 ml-3', { 'hidden': !isGenerating }]"
           ></div>
         </button>
       </div>
@@ -116,7 +116,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+
 
 // --- 1. Props (从 App.vue 传入) ---
 
@@ -152,6 +153,12 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 // 动态计算父节点输入框的显示文本
 // 这替换了原版 JS 中的 updateSelectedNodeInput() 函数
 const selectedNodeText = computed(() => {
+  // VVVV 添加这个日志 VVVV
+  console.log(
+    `%c[Form] 5. Computed 正在重新计算...`,
+    'color: #FFA500; font-weight: bold;'
+  );
+  // ^^^^ 添加这个日志 ^^^^
   const count = props.selectedIds.length
   if (count === 0) {
     return '未选择 (将创建根节点)'
@@ -176,6 +183,11 @@ const selectedNodeText = computed(() => {
   return `已选择 (${count}) 个节点`
 })
 
+
+watch(() => props.selectedIds, (newIds) => {
+  console.log("%c--- 表单(Form) 收到 Prop 更新 ---", "color: blue; font-weight: bold");
+  console.log("  表单收到的新 IDs:", newIds);
+}, { deep: true });
 // --- 5. 事件处理器 (Methods) ---
 
 /**
