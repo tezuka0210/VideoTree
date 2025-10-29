@@ -9,6 +9,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import * as d3 from 'd3'
 // 导入我们
 import type { AppNode } from '@/composables/useWorkflow'
+import { workflowTypes } from '@/composables/useWorkflow'
 
 // --- 1. Props (由 App.vue 传入) ---
 
@@ -24,6 +25,8 @@ const emit = defineEmits<{
   (e: 'delete-node', nodeId: string): void;
   (e: 'add-clip', node: AppNode, type: 'image' | 'video'): void;
   (e: 'open-preview', url: string, type: 'image' | 'video'): void;
+  (e: 'open-generation', node: AppNode): void; 
+  (e: 'open-generation', node: AppNode, defaultModuleId: string, workflowType:'preprocess' | 'image' | 'video'): void;
 }>()
 
 // --- 3. 本地 Ref ---
@@ -282,6 +285,49 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
         emit('delete-node', d.data.id);
       });
     }
+
+    // 4b. 新增 "生成" 按钮 (放在右上角)
+    // (Core Change 1) Container for the three dots
+    const dotsContainer = div.append('xhtml:div')       
+      .attr('class', `         
+            absolute top-0 h-full                          
+            flex flex-col items-center justify-center space-y-1          
+            opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10       
+          `)
+      .style('right','4px');
+
+    // (Core Change 2) Create the three dots
+    (['red', 'yellow', 'green'] as const).forEach((colorKey, index) => {
+      const workflowInfo = workflowTypes[colorKey];
+      const dotBtn = dotsContainer.append('xhtml:button')
+        .attr('class', `hover:scale-125 transition-transform`) // 只保留交互效果
+        // 2. (强制) 使用 .style() 设置所有外观
+        .style('background-color', workflowInfo.color) // 背景色
+        .style('width', '16px')      // 强制宽度 (对应 w-4)
+        .style('height', '16px')     // 强制高度 (对应 h-4)
+        .style('border-radius', '50%') // 强制圆形
+        .style('border', 'none')    
+        .style('padding', '0')  
+        .style('cursor', 'pointer') 
+        .attr('title', `Start ${workflowInfo.type} workflow`) // Tooltip 保持不变
+        .node()! as HTMLButtonElement; // 获取 DOM 节点保持不变
+
+      // Prevent zoom interference
+      dotBtn.addEventListener('mousedown', (event) => {
+        event.stopPropagation();
+      });
+
+      // Handle click: emit the event with node data and default module
+      dotBtn.addEventListener('click', (event) => {
+        event.stopPropagation(); // Prevent card selection
+        console.log(`--- ${colorKey.toUpperCase()} dot clicked ---`);
+        emit('open-generation', d.data, workflowInfo.defaultModuleId, workflowInfo.type as 'preprocess'|'image'|'video');
+      });
+    });
+
+    // (Core Change 3) Remove the old green "+" button code
+    // (Delete the 'generateBtn' creation and its listeners)
+
      // 5. 渲染媒体 (图片/视频) (1:1 恢复版)
     if (d.data.media && d.data.media.rawPath) {
       const mediaUrl = d.data.media.url

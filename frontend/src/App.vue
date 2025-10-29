@@ -5,41 +5,38 @@
       <p id="status" class="text-gray-500 mt-1">{{ statusText }}</p>
     </header>
 
-    <main class="grid grid-cols-3 gap-6 flex-1 min-h-0">
-
-      <div class="col-span-2 flex flex-col gap-4 min-h-0">
-        <WorkflowTree
-          class="flex-1 min-h-0"
-          :nodes="allNodes"
-          v-model:selectedIds="selectedParentIds"
-          @delete-node="handleDeleteNode"
-          @add-clip="addClipToStitch"
-          @open-preview="openPreview"
-        />
-
-        <StitchingPanel
-          v-model:clips="stitchingClips"
-          :is-stitching="isStitching"
-          :stitch-result-url="stitchResultUrl"
-          @remove-clip="removeClipFromStitch"
-          @stitch="onStitchRequest"
-        />
-      </div>
-
-      <div class="col-span-1 overflow-y-auto">
-        <WorkflowForm
-          :selected-ids="selectedParentIds"
-          :is-generating="isGenerating"
-          @generate="handleGenerate"
-          @upload="handleFileUpload"
-        />
-      </div>
+    <main class="flex-1 flex flex-col gap-4 min-h-0">
+      <WorkflowTree
+        class="flex-1 min-h-0"
+        :nodes="allNodes"
+        v-model:selectedIds="selectedParentIds"
+        @delete-node="handleDeleteNode"
+        @add-clip="addClipToStitch"
+        @open-preview="openPreview"
+        @open-generation="handleOpenGenerationPopover"
+      />
+      <StitchingPanel
+        v-model:clips="stitchingClips"
+        :is-stitching="isStitching"
+        :stitch-result-url="stitchResultUrl"
+        @remove-clip="removeClipFromStitch"
+        @stitch="onStitchRequest"
+      />
     </main>
     <PreviewModal
       v-if="isPreviewOpen"
       :url="previewMedia.url"
       :type="previewMedia.type"
       @close="closePreview"
+    />
+    <GenerationPopover
+      v-if="isGenerationPopoverOpen"
+      :selected-ids="selectedParentIds"
+      :is-generating="isGenerating"
+      :initial-module-id="initialModuleIdForPopover"
+      :initial-workflow-type="initialWorkflowTypeForPopover" @close="isGenerationPopoverOpen = false"
+      @generate="handleGenerate"
+      @upload="handleFileUpload"
     />
 
   </div>
@@ -50,13 +47,15 @@
 import { onMounted, ref, watch } from 'vue'
 
 // --- 2. 导入我们的 Composable (状态和逻辑) ---
-import { useWorkflow } from '@/composables/useWorkflow'
+import { useWorkflow, workflowTypes, type AppNode } from '@/composables/useWorkflow'
 
 // --- 3. 导入所有子组件 ---
 import WorkflowTree from './components/WorkflowTree.vue'
-import WorkflowForm from './components/WorkflowForm.vue'
+//import WorkflowForm from './components/WorkflowForm.vue'
 import StitchingPanel from './components/StitchingPanel.vue'
 import PreviewModal from './components/PreviewModal.vue'
+
+import GenerationPopover from './components/GenerationPopover.vue' 
 
 // --- 4. (核心) 初始化 Composable ---
 // 这会创建所有的响应式状态 (ref, reactive) 和函数
@@ -84,6 +83,8 @@ const {
 } = useWorkflow()
 
 
+
+
 // 这个 watch 会告诉我们 App.vue 的“父状态”是否真的更新了
 watch(selectedParentIds, (newIds) => {
   console.log(
@@ -106,6 +107,37 @@ async function onStitchRequest() {
     stitchResultUrl.value = resultUrl // 3. 将返回的 URL 存入本地状态
   }
 }
+
+// (核心修改 7) 添加新状态来控制弹窗
+const isGenerationPopoverOpen = ref(false)
+// (Core Change 8) New ref to store the module ID from the clicked dot
+const initialModuleIdForPopover = ref<string | null>(null) 
+const initialWorkflowTypeForPopover = ref<'preprocess' | 'image' | 'video' | null>(null) 
+
+// (Core Change 9) Update function signature and logic
+function handleOpenGenerationPopover(node: AppNode, defaultModuleId: string, workflowType:'preprocess'|'image'|'video') {
+  // 1. Set the clicked node as the initial parent
+  //    (User can still click others while popover is open if needed,
+  //     but handleGenerate will use the final selectedParentIds.value)
+  if (!selectedParentIds.value.includes(node.id)) {
+      if (selectedParentIds.value.length < 2) {
+          selectedParentIds.value = [...selectedParentIds.value, node.id];
+      } else {
+          alert("Max 2 parents selected. Opening popover with current selection.");
+      }
+  }
+  // 2. Store the default module ID for the popover
+  initialModuleIdForPopover.value = defaultModuleId;
+  initialWorkflowTypeForPopover.value = workflowType;
+  // 3. Open the popover
+  isGenerationPopoverOpen.value = true; 
+}
+
+// // (核心修改 8) 添加新函数来处理来自树的事件
+// function handleOpenGenerationPopover(node: AppNode) {
+//   // 无论如何，都打开弹窗
+//   isGenerationPopoverOpen.value = true;
+// }
 
 // --- 7. 生命周期钩子 ---
 // (当 App.vue 组件被挂载到页面上时，执行一次)

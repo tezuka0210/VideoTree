@@ -1,6 +1,6 @@
 <template>
   <div class="bg-white rounded shadow p-6">
-    <h2 class="text-xl font-semibold mb-4 text-gray-700">工作流参数</h2>
+    
     <div id="workflow-form" class="space-y-4">
       <div>
         <label class="block text-sm font-medium text-gray-600 mb-1">父节点</label>
@@ -16,17 +16,17 @@
       <div>
         <label for="module-select" class="block text-sm font-medium text-gray-600 mb-1">选择模块</label>
         <select id="module-select" v-model="moduleId" class="w-full bg-white border border-gray-300 rounded-md p-2">
-          <option value="TextGenerateImage">TextToImage</option>
-          <option value="ImageGenerateImage_Basic">ImageToImage</option>
-          <option value="TextGenerateVideo">TextToVideo</option>
-          <option value="ImageGenerateVideo">ImageToVideo</option>
-          <option value="ImageMerging">ImageMerging</option>
-          <option value="ImageCanny">ImageCanny</option>
-          <option value="ImageGenerateImage_Canny">CannyToImage</option>
+          <option
+            v-for="module in availableModules"
+            :key="module.id"
+            :value="module.id"
+          >
+            {{ module.name }}
+          </option>
           </select>
       </div>
 
-      <div>
+      <div v-if="props.initialWorkflowType ==='image' || props.initialWorkflowType === 'video'">
         <label for="prompt-input" class="block text-sm font-medium text-gray-600 mb-1">Prompt</label>
         <textarea
           id="prompt-input"
@@ -38,7 +38,7 @@
       </div>
 
       <div class="grid grid-cols-2 gap-4">
-        <div>
+        <div v-if="props.initialWorkflowType ==='image'">
           <label for="seed-input" class="block text-sm font-medium text-gray-600 mb-1">Seed</label>
           <input
             type="number"
@@ -49,7 +49,7 @@
             placeholder="随机"
           >
         </div>
-        <div>
+        <div v-if="props.initialWorkflowType ==='image'">
           <label for="steps-input" class="block text-sm font-medium text-gray-600 mb-1">Steps</label>
           <input
             type="number"
@@ -59,9 +59,10 @@
             class="w-full bg-white border border-gray-300 rounded-md p-2"
           >
         </div>
-        <div>
+        <div v-if="props.initialWorkflowType ==='image' || props.initialWorkflowType === 'video'">
           <label for="cfg-input" class="block text-sm font-medium text-gray-600 mb-1">CFG</label>
           <input
+            
             type="number"
             id="cfg-input"
             step="0.1"
@@ -70,7 +71,7 @@
             class="w-full bg-white border border-gray-300 rounded-md p-2"
           >
         </div>
-        <div>
+        <div v-if="props.initialWorkflowType ==='image'">
           <label for="denoise-input" class="block text-sm font-medium text-gray-600 mb-1">Denoise</label>
           <input
             type="number"
@@ -82,6 +83,17 @@
           >
         </div>
       </div>
+      <div v-if="props.initialWorkflowType === 'video'">
+          <label for="noise_seed-input" class="block text-sm font-medium text-gray-600 mb-1">Seed</label>
+          <input
+            type="number"
+            id="noise_seed-input"
+            v-model.number="seed"
+            @keydown.enter.prevent
+            class="w-full bg-white border border-gray-300 rounded-md p-2"
+            placeholder="随机"
+          >
+        </div>
 
       <div>
         <label for="image-upload" class="block text-sm font-medium text-gray-600 mb-1">图片输入 (可选)</label>
@@ -116,15 +128,45 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 
+// (核心修改) 定义所有可用模块
+const allModules = [
+  { id: 'ImageCanny', name: 'ImageCanny', type: 'preprocess' },
+  { id: 'RemoveBackground', name: 'RemoveBackground', type: 'preprocess' },
+  { id: 'ImageMerging', name: 'ImageMerging', type: 'preprocess' },
+
+  { id: 'TextGenerateImage', name: 'TextToImage', type: 'image' },
+  { id: 'ImageGenerateImage_Basic', name: 'ImageToImage', type: 'image' },
+  { id: 'ImageGenerateImage_Canny', name: 'CannyToImage', type: 'image' },
+  { id: 'PartialRepainting', name: 'PartialRepainting', type: 'image' },
+  { id: 'ImageHDRestoration', name: 'ImageHDRestoration', type: 'image' },
+  { id: 'Put_It_Here', name: 'ObjectMigration', type: 'image' },
+
+  { id: 'TextGenerateVideo', name: 'TextToVideo', type: 'video' },
+  { id: 'ImageGenerateVideo', name: 'ImageToVideo', type: 'video' },
+  { id: 'CameraControl', name: 'CameraControl', type: 'video' },
+  { id: 'FrameInterpolation', name: 'FrameInterpolation', type: 'video' },
+  { id: 'FLFrameToVideo', name: 'FisrtAndLastFrameControl', type: 'video' },
+  
+];
+
+// (核心修改) 创建一个计算属性，根据传入的类型过滤模块列表
+const availableModules = computed(() => {
+  if (!props.initialWorkflowType) {
+    return allModules; // 如果没有类型，显示全部 (或只显示默认?)
+  }
+  return allModules.filter(module => module.type === props.initialWorkflowType);
+});
 
 // --- 1. Props (从 App.vue 传入) ---
 
 // 定义组件接收的 props，TypeScript 方式
 const props = defineProps<{
-  selectedIds: string[];  // 选中的父节点ID数组
-  isGenerating: boolean;  // 是否正在生成 (用于控制按钮禁用和加载动画)
+  selectedIds: string[];
+  isGenerating: boolean;
+  initialModuleId: string | null;
+  initialWorkflowType: 'preprocess' | 'image' | 'video' | null;
 }>()
 
 // --- 2. Emits (向 App.vue 传出) ---
@@ -148,6 +190,13 @@ const denoise = ref(0.8)
 // 对 <input type="file"> DOM 元素的引用
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
+
+// (Core Change 13) Watch the prop and update local state
+watch(() => props.initialModuleId, (newModuleId) => {
+  if (newModuleId) {
+    moduleId.value = newModuleId;
+  }
+}, { immediate: true }); // immediate: true ensures it runs on mount
 // --- 4. 计算属性 (Computed) ---
 
 // 动态计算父节点输入框的显示文本

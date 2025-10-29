@@ -10,6 +10,32 @@ const STITCH_API_URL = '/api/stitch'
 const DELETE_API_URL = '/api/nodes' // 假设删除也用 /api/nodes/:id
 const COMFYUI_URL = 'http://223.193.6.178:8188' // 你的 ComfyUI 基础 URL
 
+export const workflowTypes = {
+  red: { type: 'preprocess', defaultModuleId: 'ImageCanny', color: '#ef4444' }, // Red-500
+  yellow: { type: 'image', defaultModuleId: 'TextGenerateImage', color: '#f59e0b' }, // Amber-500
+  green: { type: 'video', defaultModuleId: 'TextGenerateVideo', color: '#10b981' } // Emerald-500
+};
+const defaultLinkColor = '#9ca3af'; // Gray-400
+
+// /frontend/src/composables/useWorkflow.ts
+const moduleIdToColor = {
+  'ImageCanny': workflowTypes.red.color, 
+  'ImageMerging': workflowTypes.red.color,
+  'RemoveBackground': workflowTypes.red.color,
+  'TextGenerateImage': workflowTypes.yellow.color,
+  'ImageGenerateImage_Basic': workflowTypes.yellow.color,
+  'ImageGenerateImage_Canny': workflowTypes.yellow.color,
+  'PartialRepainting': workflowTypes.yellow.color,
+  'ImageHDRestoration': workflowTypes.yellow.color,
+  'Put_It_Here': workflowTypes.yellow.color,
+  'TextGenerateVideo': workflowTypes.green.color,
+  'ImageGenerateVideo': workflowTypes.green.color,
+  'CameraControl': workflowTypes.green.color,
+  'FLFrameToVideo': workflowTypes.green.color,
+  'FrameInterpolation': workflowTypes.green.color,
+  // Add mappings for ALL your module IDs
+};
+
 // --- 2. TypeScript 类型定义 ---
 
 // 后端数据库返回的原始 Node 结构
@@ -47,6 +73,7 @@ export interface AppNode {
   status: string;
   media: AssetMedia | null; // 处理后的第一个媒体文件
   // originalParents: string | string[] | null; // (可选) 保留原始父ID信息
+  linkColor?:string;
 }
 
 // 拼接序列中片段的类型
@@ -198,7 +225,8 @@ export function useWorkflow() {
 
       // D3 树状图只支持单个父节点，我们取第一个
       const firstParentId = Array.isArray(n.parent_id) ? n.parent_id[0] : n.parent_id
-
+       // (Core Change 5) Assign linkColor based on module ID
+      const linkColor = moduleIdToColor[n.module_id as keyof typeof moduleIdToColor];
       return {
         id: n.node_id,
         parent_id: firstParentId || null,
@@ -207,6 +235,7 @@ export function useWorkflow() {
         status: n.status,
         media: media,
         // originalParents: n.parent_id // (可选)
+        linkColor: linkColor
       }
     })
 
