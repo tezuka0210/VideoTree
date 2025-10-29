@@ -98,3 +98,14 @@
     - Size_Setting > height
     - Size_Setting > batch_size
     - Size_Setting > length
+  - FLFrameToVideo
+    - CLIP Text Encode (Negative Prompt) > text
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSamplerAdvanced2 > noise_seed
+    - LoadStartImage > image
+    - LoadLastImage > image
+    - CreateVideo > fps
+    - Size_Setting > width
+    - Size_Setting > height
+    - Size_Setting > batch_size
+    - Size_Setting > length
