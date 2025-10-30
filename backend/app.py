@@ -387,17 +387,29 @@ def create_node():
 
         # 情况2: 两个父节点 -> 图像合并
         elif len(parent_ids) == 2:
-            print(">>> 检测到两个父节点，加载 ImageMerging 工作流...")
-            final_module_id = 'ImageMerging' # 强制使用 Merging 模块
-            workflow = load_workflow(final_module_id)
-            if workflow is None: raise ValueError(f"未找到 ImageMerging 工作流 '{final_module_id}.json'")
-            
-            # 处理两个父节点的图像输入
-            image1_filename = _get_image_info_from_parent(parent_ids[0])
-            image2_filename = _get_image_info_from_parent(parent_ids[1])
-            image_filenames["LoadImage"] = image1_filename
-            image_filenames["LoadImage(Move)"] = image2_filename # 假设第二个输入节点标题是这个
-            print(f"    - 输入图1: {image1_filename}, 输入图2: {image2_filename}")
+            print(">>> 检测到两个父节点，加载工作流...")
+            if(module_id_from_frontend == 'ImageMerging'):
+                final_module_id = module_id_from_frontend 
+                workflow = load_workflow(final_module_id)
+                if workflow is None: raise ValueError(f"未找到 ImageMerging 工作流 '{final_module_id}.json'")
+                
+                # 处理两个父节点的图像输入
+                image1_filename = _get_image_info_from_parent(parent_ids[0])
+                image2_filename = _get_image_info_from_parent(parent_ids[1])
+                image_filenames["LoadImage"] = image1_filename
+                image_filenames["LoadImage(Move)"] = image2_filename 
+                print(f"    - 输入图1: {image1_filename}, 输入图2: {image2_filename}")
+            elif(module_id_from_frontend == 'FLFrameToVideo'):
+                final_module_id = module_id_from_frontend 
+                workflow = load_workflow(final_module_id)
+                if workflow is None: raise ValueError(f"未找到 FLFrameToVideo 工作流 '{final_module_id}.json'")
+                
+                # 处理两个父节点的图像输入
+                image1_filename = _get_image_info_from_parent(parent_ids[0])
+                image2_filename = _get_image_info_from_parent(parent_ids[1])
+                image_filenames["LoadStartImage"] = image1_filename
+                image_filenames["LoadLastImage"] = image2_filename 
+                print(f"    - 输入图1: {image1_filename}, 输入图2: {image2_filename}")
 
         # 情况1: 一个父节点 -> 标准图生图/图生视频
         elif len(parent_ids) == 1:
@@ -514,7 +526,7 @@ def create_node():
         stitch_node_id = find_node_id_by_title(workflow,"Image Stitch")
         if stitch_node_id:
             if 'stitch' in parameters:
-                workflow[stitch_node_id]["inputs"]["noise_seed"] = parameters['stitch']
+                workflow[stitch_node_id]["inputs"]["stitch"] = parameters['stitch']
 
         # REMBG
         rembg_node_id = find_node_id_by_title(workflow,"Image Rembg (Remove Background)")

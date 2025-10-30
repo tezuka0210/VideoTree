@@ -215,9 +215,14 @@ def get_tree_as_json(tree_id: int) -> dict | None:
             cursor.execute("SELECT parent_node_id FROM node_parents WHERE child_node_id = ?", (node_dict['node_id'],))
             parents = cursor.fetchall()
             
-            # 为了 D3 stratify 兼容，只取第一个父节点 (如果没有父节点则为 None)
-            node_dict['parent_id'] = [parents[0]['parent_node_id'] if parents else None]
-            
+            # 2. (关键) 将所有父节点 ID 收集到一个列表中
+            parent_ids_list = [p['parent_node_id'] for p in parents] #
+            # 3. (关键) 如果列表为空，则为 None；否则使用完整列表
+            if parent_ids_list:
+                node_dict['parent_id'] = parent_ids_list
+            else:
+                node_dict['parent_id'] = None # 根节点
+            # (旧的 v72 错误代码 已被替换)
             nodes_for_frontend.append(node_dict)
 
         return {

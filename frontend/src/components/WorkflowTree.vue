@@ -7,11 +7,23 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import * as d3 from 'd3'
+import * as dagre from 'dagre'
 // 导入我们
 import type { AppNode } from '@/composables/useWorkflow'
 import { workflowTypes } from '@/composables/useWorkflow'
 
 // --- 1. Props (由 App.vue 传入) ---
+const defaultLinkColor = '#9ca3af';
+
+interface DagrePoints {
+  x: number;
+  y: number;
+}
+
+const lineGenerator = d3.line<DagrePoints>()
+  .x(d => d.x)
+  .y(d => d.y)
+  .curve(d3.curveBasis); // <-- (关键) d3.curveBasis 提供了平滑的 B-spline 曲线
 
 const props = defineProps<{
   nodes: AppNode[];       // 所有的节点数据 (平铺数组)
@@ -27,6 +39,7 @@ const emit = defineEmits<{
   (e: 'open-preview', url: string, type: 'image' | 'video'): void;
   (e: 'open-generation', node: AppNode): void; 
   (e: 'open-generation', node: AppNode, defaultModuleId: string, workflowType:'preprocess' | 'image' | 'video'): void;
+  (e: 'toggle-collapse', nodeId: string): void; 
 }>()
 
 // --- 3. 本地 Ref ---
@@ -46,7 +59,7 @@ let resizeObserver: ResizeObserver | null = null
  * @param selectedIds 选中的节点ID (来自 props.selectedIds)
  */
 
-function updateSelectionStyles(svgElement: SVGSVGElement, selectedIds: string[]) {
+/*function updateSelectionStyles(svgElement: SVGSVGElement, selectedIds: string[]) {
   // 1. (安全检查) 确保 D3 节点存在
   const nodes = d3.select(svgElement).selectAll<SVGGElement, d3.HierarchyNode<any>>('.node');
   nodes.each(function(d) {
@@ -64,352 +77,463 @@ function updateSelectionStyles(svgElement: SVGSVGElement, selectedIds: string[])
       }
     }
   });
+}*/
+
+/** (v60) 递归查找所有子孙节点 ID (用于收缩) */
+function findDescendants(
+  nodeId: string,
+  hierarchy: Map<string, AppNode & { children: AppNode[] }>
+): string[] {
+  const node = hierarchy.get(nodeId);
+  if (!node || !node.children || node.children.length === 0) {
+    return [];
+  }
+  let descendants: string[] = [];
+  node.children.forEach(child => {
+    descendants.push(child.id);
+    descendants = descendants.concat(findDescendants(child.id, hierarchy)); // 递归
+  });
+  return descendants;
 }
+
+/** (v60) 计算可见节点和连线 (用于收缩) */
+function getVisibleNodesAndLinks(allNodes: AppNode[]): {
+  visibleNodes: AppNode[],
+  visibleLinks: { source: string, target: string }[] 
+} {
+  if (!allNodes || allNodes.length === 0) {
+    return { visibleNodes: [], visibleLinks: [] };
+  }
+  // 1. 构建临时的父子层级关系
+  const nodeMap = new Map(allNodes.map(n => [n.id, { ...n, children: [] as AppNode[] }]));
+  allNodes.forEach(n => {
+    if (n.originalParents) { // (v66) 使用 originalParents
+      n.originalParents.forEach(parentId => {
+        const parent = nodeMap.get(parentId);
+        if (parent) {
+          parent.children.push(n);
+        }
+      });
+    }
+  });
+
+  // 2. 找出所有需要隐藏的节点 ID
+  const hiddenNodeIds = new Set<string>();
+  allNodes.forEach(node => {
+    if (node._collapsed) {
+      const descendants = findDescendants(node.id, nodeMap);
+      descendants.forEach(id => hiddenNodeIds.add(id));
+    }
+  });
+
+  // 3. 过滤出可见节点
+  const visibleNodes = allNodes.filter(node => !hiddenNodeIds.has(node.id));
+  const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+
+  // 4. 构建可见连线
+  const visibleLinks: { source: string, target: string }[] = [];
+  visibleNodes.forEach(node => { // (v71 修复) 只遍历可见节点
+    if (node.originalParents) { // (v66)
+      node.originalParents.forEach(parentId => {
+        // 源节点也必须可见
+        if (visibleNodeIds.has(parentId)) {
+          visibleLinks.push({ source: parentId, target: node.id });
+        }
+      });
+    }
+  });
+
+  return { visibleNodes, visibleLinks };
+}
+
+// (v33) 快速样式更新函数
+function updateSelectionStyles(svgElement: SVGSVGElement, selectedIds: string[]) {
+  // ... (v33 的代码保持不变) ...
+  d3.select(svgElement).selectAll<SVGGElement, d3.HierarchyNode<any>>('.node')
+    .each(function(d) {
+      if (d && d.id) { // (v71 修复) d3.forceSimulation 是 d, d3.tree 是 d.data.id
+        const nodeId = d.id;
+        const card = d3.select(this).select<HTMLDivElement>('.node-card');
+        card.classed('selected', selectedIds.includes(nodeId));
+      }
+    });
+}
+
+
+
 
 function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selectedIds: string[]) {
   // --- A. 数据准备 ---
-  // 1. 清空之前的 SVG 内容
-  const wrapper = d3.select(svgElement)
-  wrapper.html('') // 清空
+  const wrapper = d3.select(svgElement);
+  wrapper.html('');
 
-  if (allNodesData.length === 0) {
-    // 如果没有数据，显示提示文本
+  console.log(
+    `%c[Debug 1] 传入 renderTree 的原始数据 (allNodesData):`,
+    "color: #FFA500; font-weight: bold;",
+    allNodesData // (请展开这个数组)
+  );
+
+  // (v60) 1. 过滤出可见节点和连线
+  const { visibleNodes, visibleLinks } = getVisibleNodesAndLinks(allNodesData);
+
+  // VVVV 添加这个日志 VVVV
+  console.log(
+    `%c[Debug 2] 过滤后的可见连线 (visibleLinks):`,
+    "color: #FF69B4; font-weight: bold;",
+    visibleLinks // (请展开这个数组)
+  );
+  // ^^^^ 添加这个日志 ^^^^
+
+  if (visibleNodes.length === 0) {
     wrapper.append('text')
       .attr('x', '50%')
       .attr('y', '50%')
       .attr('text-anchor', 'middle')
-      .attr('fill', '#9ca3af') // text-gray-400
+      .attr('fill', '#9ca3af')
       .text('暂无数据，请从右侧开始生成...')
-    return
+    return;
   }
 
-  // 2. 将平铺的 allNodesData 转换为 D3 hierarchy 需要的树状结构
-  const nodeMap: { [key: string]: AppNode & { children: AppNode[] } } = {}
-  allNodesData.forEach(n => {
-    nodeMap[n.id] = { ...n, children: [] }
-  })
-  // 3. 创建一个虚拟根节点，以支持多根树
-  const fakeRoot: { id: string; module_id: string; children: any[] } = {
-    id: '__ROOT__',
-    module_id: 'ROOT',
-    children: []
-  }
+  // --- B. (核心 v71) Dagre 布局计算 ---
 
-  Object.values(nodeMap).forEach(n => {
-    if (n.parent_id) {
-      // 1. 先把父节点明确地取出来
-      const parentNode = nodeMap[n.parent_id];
-      // 2. 再次确认这个父节点真的存在
-      if (parentNode) {
-        parentNode.children.push(n);
-      }
-    } else if (!n.parent_id) {
-      // 没有父ID的，都是根节点
-      fakeRoot.children.push(n)
-    }
-  })
+  // 1. 创建 Dagre 图
+  const g = new dagre.graphlib.Graph();
+  // 2. 设置布局为 "LR" (Left-to-Right)
+  g.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 120 }); // nodesep: 节点Y间距, ranksep: 层X间距
+  // 3. 设置默认边样式
+  g.setDefaultEdgeLabel(() => ({}));
 
-  // --- B. D3 布局与缩放设置 ---
-  // 1. 获取 SVG 容器的尺寸
-  const width = svgElement.clientWidth || 1200
-  const height = svgElement.clientHeight || 600
+  // 4. (关键) 告诉 Dagre *所有*可见节点的尺寸
+  visibleNodes.forEach(node => {
+    // (v71) 我们使用固定的 140x140 尺寸
+    g.setNode(node.id, { label: node.module_id, width: 140, height: 140 });
+  });
 
+  // 5. (关键) 告诉 Dagre 所有的连线
+  visibleLinks.forEach(link => {
+    g.setEdge(link.source, link.target);
+  });
+
+  // 6. (关键) 运行布局！
+  dagre.layout(g);
+
+  console.log(
+    `%c[Debug 3] Dagre 实际处理的连线 (g.edges()):`,
+    "color: #00BFFF; font-weight: bold;",
+    g.edges() // (请展开这个数组)
+  );
+
+
+  // 7. (关键) 从 Dagre 获取 计算好 的节点，并存入 Map 方便查找
+  const dagreNodes = new Map(g.nodes().map(nodeId => [nodeId, g.node(nodeId)]));
+
+  const dagreEdges = g.edges().map(edgeObj => {
+      const edgeData = g.edge(edgeObj); // { points: [ {x,y}, {x,y}, ... ] }
+      return { v: edgeObj.v, w: edgeObj.w, points: edgeData.points };
+  });
+  // --- C. D3 渲染 (现在只负责“画”) ---
+  const width = svgElement.clientWidth || 1200;
+  const height = svgElement.clientHeight || 600;
   const svg = wrapper
     .attr('viewBox', `0 0 ${width} ${height}`)
-    .attr('preserveAspectRatio', 'xMidYMid meet')
+    .attr('preserveAspectRatio', 'xMidYMid meet');
+  // (v45) 箭头定义
+   const defs = svg.append('defs');
+  // 1. 定义我们所有的颜色
+  const colorsToDefine = [
+    { id: 'red', color: workflowTypes.red.color },
+    { id: 'yellow', color: workflowTypes.yellow.color },
+    { id: 'green', color: workflowTypes.green.color },
+    { id: 'default', color: defaultLinkColor } // (v65) 灰色
+  ];
 
-  const g = svg.append('g').attr('transform', `translate(80, ${height / 2})`) // 初始位置
+  // 2. 循环并为每种颜色创建一个 marker
+  colorsToDefine.forEach(c => {
+    defs.append('marker')
+      .attr('id', `arrowhead-${c.id}`) // <-- 唯一 ID (例如 "arrowhead-red")
+      .attr('viewBox', '-0 -5 10 10')
+      .attr('refX', 10) // (v77 修复)
+      .attr('refY', 0)
+      .attr('orient', 'auto')
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('xoverflow', 'visible')
+    .append('svg:path')
+      .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
+      .style('fill', c.color) // <-- (核心 v78) 使用对应的颜色
+      .style('stroke', 'none');
+  });
 
-  // 2. 设置缩放
+  // (v71) 我们需要一个 <g> 来容纳 Dagre 的布局
+  const layoutGroup = svg.append('g');
+
+  // (v45) 创建 links 和 nodes 的容器 <g>
+  const linkGroup = layoutGroup.append('g').attr('class', 'links');
+  const nodeGroup = layoutGroup.append('g').attr('class', 'nodes');
+
+  // (v45/v71) Zoom 逻辑
   const zoom = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.1, 2.5])
     .on('zoom', (event) => {
-      g.attr('transform', event.transform)
-    })
-     // 添加一个 .filter() 来解决 Zoom 和 Click 的冲突
-    .filter((event) => {
-      // 1. 如果是滚轮事件 (wheel)，总是允许缩放
-      if (event.type === 'wheel') {
-        return true;
-      }
-      // 2. 检查事件的目标 (target)
-      // .closest('.node-card') 会检查被点击的元素
-      // 或者它的任何父元素，是否是一个 .node-card
-      const target = event.target as Element;
-      if (target && typeof target.closest === 'function' && target.closest('.node-card')) {
-        // 如果点击发生在 .node-card 内部，
-        // 阻止 d3.zoom 运行 (return false)
-        return false;
-      }
-      // 3. 否则 (比如点击在 SVG 背景上)，允许 d3.zoom 运行
-      return true;
-    })
-  svg.call(zoom)
-
-  // 3. (重要) SVG 背景点击事件 -> 清空所有选择
-  svg.on('click', (event) => {
-    console.log("--- 1. 背景被点击 --- (立即取消全选)"); 
-    // (关键) 1. 立即更新 DOM
-    svgElement.querySelectorAll('.node-card').forEach(card => {
-      card.classList.remove('selected');
+      layoutGroup.attr('transform', event.transform); // (v71) 缩放 layoutGroup
     });
-    console.log(         
-        `%c[Tree] 1. 背景被点击 -> EMITTING 'update:selectedIds'`,          
-        'color: #BADA55; font-weight: bold;',          
-        [] // 打印出我们将要发送的新数组       
-      );
-    // 2. (最后) 再去通知 Vue 更新状态
-    emit('update:selectedIds', [])
-  })
+  svg.call(zoom);
+  // (v71) 尝试计算初始缩放和平移以使图居中
+  const graphWidth = g.graph().width || width;
+  const graphHeight = g.graph().height || height;
+  const initialScale = Math.min(1, Math.min(width / graphWidth, height / graphHeight) * 0.9);
+  const initialTranslateX = (width - (graphWidth * initialScale)) / 2;
+  const initialTranslateY = (height - (graphHeight * initialScale)) / 2;
+  svg.call(zoom.transform as any, d3.zoomIdentity.translate(initialTranslateX, initialTranslateY).scale(initialScale));
 
-  // 4. D3 树状图布局
-  const root = d3.hierarchy(fakeRoot, d => d.children)
-  const treeLayout = d3.tree<{ id: string; module_id: string; children: any[] }>()                          
-                          .nodeSize([180, 220]);
-  treeLayout(root)
+  // (v31/v71) 背景点击 (原生)
+  const svgDomElement = svg.node()!;
+  svgDomElement.addEventListener('click', (event) => {
+    if (event.target === svgDomElement) {
+        console.log("--- 1. 背景被点击 --- (立即取消全选)");
+        svgElement.querySelectorAll('.node-card').forEach(card => {
+          card.classList.remove('selected');
+        });
+        emit('update:selectedIds', [])
+    }
+  });
 
-  // --- C. 渲染 Links (连线) ---
-  g.selectAll('.link')
-    .data(root.links().filter(d => d.source.data.id !== '__ROOT__'))
-    .enter()
-    .append('path')
-    .attr('class', 'link') // 使用 style.css 中的 .link 样式
-    .attr('d', (d: any) => `M${d.source.y + 140},${d.source.x} C${d.source.y + 180},${d.source.x} ${d.target.y - 40},${d.target.x} ${d.target.y},${d.target.x}`)
+  // 1. 渲染 Links (不再用物理模拟)
+  function getLinkStyle(d: any) {
+    // (d.w 是 dagre 边的目标 ID)
+    const targetNode = allNodesData.find(n => n.id === d.w);
+    const linkColor = targetNode?.linkColor; // (v60)
 
-  // --- D. 渲染 Nodes (节点) ---
-  const node = g.selectAll('.node')
-    .data(root.descendants().filter(d => d.data.id !== '__ROOT__'))
-    .enter()
-    .append('g')
-    .attr('class', 'node')
-    .attr('transform', (d: any) => `translate(${d.y}, ${d.x - 70})`) // 节点位置
+    if (linkColor === workflowTypes.red.color) {
+      return { color: workflowTypes.red.color, id: 'url(#arrowhead-red)' };
+    }
+    if (linkColor === workflowTypes.yellow.color) {
+      return { color: workflowTypes.yellow.color, id: 'url(#arrowhead-yellow)' };
+    }
+    if (linkColor === workflowTypes.green.color) {
+      return { color: workflowTypes.green.color, id: 'url(#arrowhead-green)' };
+    }
+    // 默认情况
+    return { color: defaultLinkColor, id: 'url(#arrowhead-default)' };
+  }
 
-  // 1. 使用 foreignObject 来嵌入 HTML
-  node.each(function (d: any) { // (d.data 现在是 AppNode)
-    const fo = d3.select(this)
-      .append('foreignObject')
+  // 2. 渲染 Links (v78 动态版)
+  const linkElements = linkGroup.selectAll('path.link')
+    .data(dagreEdges)
+    .enter().append('path')
+      .attr('class', 'link') // (确保 style.css 有 fill: none)
+      // (核心 v78)
+      // 使用 .each() 来同时设置 stroke 和 marker-end
+      .each(function(d) {
+        const style = getLinkStyle(d);
+        d3.select(this)
+          .style('stroke', style.color)
+          .attr('marker-end', style.id);
+      })
+      .attr('d', (d: any) => lineGenerator(d.points));
+
+  // 2. 渲染 Nodes (不再用物理模拟)
+  const nodeElements = nodeGroup.selectAll('.node')
+    .data(visibleNodes, (d: any) => d.id)
+    .enter().append('g')
+      .attr('class', 'node')
+      // (核心 v71) 从 Dagre 读取坐标
+      .attr('transform', (d: any) => {
+        const node = dagreNodes.get(d.id)!;
+        return `translate(${node.x},${node.y})`;
+      });
+
+  // (v68 修复) node.each(...) 循环
+  // 包含 fo, div, divNode, 选中逻辑(v39), 删除(×), 三色圆点(v52), 收缩(+/-)(v60)
+  // 媒体(+), 标签, Tooltip
+  nodeElements.each(function (d: any) {
+    const gElement = d3.select(this);
+    const fo = gElement.append('foreignObject')
       .attr('width', 140)
       .attr('height', 140)
-      .style('overflow', 'visible')
+      .attr('x', -70) // (v71) 中心定位
+      .attr('y', -70) // (v71) 中心定位
+      .style('overflow', 'visible');
+
+    // (v23) 拦截 mousedown，阻止 zoom
+    fo.on('mousedown', (event) => {
+      event.stopPropagation();
+    });
 
     const div = fo.append('xhtml:div')
-      .attr('class', 'node-card group') // 使用 style.css 中的 .node-card
+      .attr('class', 'node-card group')
       .style('cursor', 'pointer')
-      .style('position','relative')
-    
-    const divNode = div.node()! as HTMLDivElement; 
-
+      .style('position','relative'); // (v50 修复)
+    const divNode = div.node()! as HTMLDivElement;
+    // (v39/v68) 卡片白边 mousedown 和 click 监听器
     divNode.addEventListener('mousedown', (event) => {
       event.stopPropagation();
     });
-    // (正确实现 1)
-    // 这是“选中”的逻辑。因为 mousedown 已被 fo 拦截，
-    // 这个 click 监听器现在 100% 可靠。
-    // /frontend/src/components/WorkflowTree.vue
-    // (核心修复)
-    // 这是“选中”的逻辑
     divNode.addEventListener('click', (event) => {
-      console.log("--- 2. 节点卡片被点击 --- (立即多选)");
-      event.stopPropagation(); // 阻止冒泡到 SVG 背景 (取消全选)
-      const nodeId = d.data.id;
-      // (关键) 1. 从 props 读取当前状态 (v24 的多选逻辑)
+      console.log("--- 2. 节点卡片被点击 --- (v39 多选)");
+      event.stopPropagation();
+      const nodeId = d.id; // (v67 修复)
       const currentSelectedIds = [...props.selectedIds];
       const index = currentSelectedIds.indexOf(nodeId);
-      //let newSelectedIds: string[];
-
       if (index > -1) {
-        // (v24 logic) 它已经被选中了，从数组中移除
         currentSelectedIds.splice(index, 1);
-        // (v25 logic) 立即更新 DOM (移除蓝色边框)
         divNode.classList.remove('selected');
-
-        emit('update:selectedIds', currentSelectedIds);
       } else {
-        if(currentSelectedIds.length < 2){
-          // (v24 logic) 它未被选中，添加到数组
-          currentSelectedIds.push(nodeId);
-          // (v25 logic) 立即更新 DOM (添加蓝色边框)
-          divNode.classList.add('selected');
-
-          emit('update:selectedIds', currentSelectedIds);
-        }else{
-          console.warn("最多只能选择两个父节点")
+        if (currentSelectedIds.length < 2) { // (v39 限制)
+            currentSelectedIds.push(nodeId);
+            divNode.classList.add('selected');
+        } else {
+            console.warn("最多只能选择 2 个父节点。");
         }
-        
       }
-      // 2. (最后) 再去通知 Vue 更新正确的完整状态
-      //newSelectedIds = currentSelectedIds;
-      console.log(         
-        `%c[Tree] 1. 节点被点击 -> EMITTING 'update:selectedIds'`,          
-        'color: #BADA55; font-weight: bold;',          
-        currentSelectedIds // 打印出我们将要发送的新数组       
-      );
-      // emit('update:selectedIds', currentSelectedIds);
+      emit('update:selectedIds', currentSelectedIds);
     });
 
-    // 2. (核心) 根据 props.selectedIds 更新选中样式
-    div.classed('selected', selectedIds.includes(d.data.id))
+    // (v33) 更新选中样式
+    div.classed('selected', selectedIds.includes(d.id));
 
-    // 3. (核心) 节点点击事件 -> 更新选中
-    /*div.on('click', function (event) {
-      event.stopPropagation() // 阻止事件冒泡到 SVG 背景
-      const nodeId = d.data.id
-      // (Vue 方式) 创建一个新数组来触发响应式
-      const newSelectedIds = [...selectedIds]
-      const index = newSelectedIds.indexOf(nodeId)
-      if (index > -1) {
-        newSelectedIds.splice(index, 1) // 已选中，取消
-      } else {
-        newSelectedIds.push(nodeId) // 未选中，添加
-      }
-      // (核心) emit 事件，通知 App.vue 更新 v-model
-      emit('update:selectedIds', newSelectedIds)
-    })*/
-
-    // 4. 删除按钮
-    if (d.data.module_id !== 'Init' && d.data.module_id !== 'ROOT') {
-      // (核心修复)
-      // 1. 创建元素并获取有类型的 DOM 节点
+    // (v52/v68) 删除按钮 "×"
+    if (d.module_id !== 'Init' && d.module_id !== 'ROOT') {
       const deleteBtn = div.append('xhtml:button')
-        .attr('class', 'bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-70 hover:opacity-100 z-10 transition-opacity duration-150')
+        .attr('class', 'bg-red-500 text-white ...') // (v52 样式)
         .style('font-size', '11px')
         .style('position', 'absolute')
         .style('top', '4px')
         .style('left', '4px')
         .text('X')
-        .node()! as HTMLButtonElement; // <-- 1. 获取节点并断言类型
-
-      // 2. 在有类型的节点上添加监听器
+        .node()! as HTMLButtonElement;
       deleteBtn.addEventListener('click', (event) => {
-        event.stopPropagation(); // 阻止冒泡到 divNode (选中)
-        emit('delete-node', d.data.id);
+        event.stopPropagation();
+        emit('delete-node', d.id);
       });
     }
 
-    // 4b. 新增 "生成" 按钮 (放在右上角)
-    // (Core Change 1) Container for the three dots
-    const dotsContainer = div.append('xhtml:div')       
-      .attr('class', `         
-            absolute top-0 h-full                          
-            flex flex-col items-center justify-center space-y-1          
-            opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10       
-          `)
-      .style('right','4px');
-
-    // (Core Change 2) Create the three dots
+    // (v52/v68) 三色圆点
+    const dotsContainer = div.append('xhtml:div')
+      .attr('class', `
+        absolute top-0 right-1 h-full        flex flex-col items-center justify-center space-y-1
+        opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10
+      `); // (v51 样式)
     (['red', 'yellow', 'green'] as const).forEach((colorKey, index) => {
       const workflowInfo = workflowTypes[colorKey];
       const dotBtn = dotsContainer.append('xhtml:button')
-        .attr('class', `hover:scale-125 transition-transform`) // 只保留交互效果
-        // 2. (强制) 使用 .style() 设置所有外观
-        .style('background-color', workflowInfo.color) // 背景色
-        .style('width', '16px')      // 强制宽度 (对应 w-4)
-        .style('height', '16px')     // 强制高度 (对应 h-4)
-        .style('border-radius', '50%') // 强制圆形
-        .style('border', 'none')    
-        .style('padding', '0')  
-        .style('cursor', 'pointer') 
-        .attr('title', `Start ${workflowInfo.type} workflow`) // Tooltip 保持不变
-        .node()! as HTMLButtonElement; // 获取 DOM 节点保持不变
-
-      // Prevent zoom interference
+        .attr('class', `hover:scale-125 transition-transform`) // (v52 样式)
+        .style('background-color', workflowInfo.color)
+        .style('width', '16px')      // (v52 样式)
+        .style('height', '16px')     // (v52 样式)
+        .style('border-radius', '50%') // (v52 样式)
+        .style('border', 'none')       // (v52 样式)
+        .style('padding', '0')         // (v52 样式)
+        .style('cursor', 'pointer')    // (v52 样式)
+        .attr('title', `Start ${workflowInfo.type} workflow`)
+        .node()! as HTMLButtonElement;
       dotBtn.addEventListener('mousedown', (event) => {
         event.stopPropagation();
       });
-
-      // Handle click: emit the event with node data and default module
       dotBtn.addEventListener('click', (event) => {
-        event.stopPropagation(); // Prevent card selection
-        console.log(`--- ${colorKey.toUpperCase()} dot clicked ---`);
-        emit('open-generation', d.data, workflowInfo.defaultModuleId, workflowInfo.type as 'preprocess'|'image'|'video');
+        event.stopPropagation();
+        emit('open-generation', d, workflowInfo.defaultModuleId, workflowInfo.type as 'preprocess' | 'image' | 'video');
       });
     });
 
-    // (Core Change 3) Remove the old green "+" button code
-    // (Delete the 'generateBtn' creation and its listeners)
+    // (新 v60) 添加 "+/-" 收缩/展开按钮
+    const tempNodeMap = new Map(allNodesData.map(n => [n.id, { ...n, children: [] as AppNode[] }]));
+    allNodesData.forEach(n => {
+      if (n.originalParents) {
+        n.originalParents.forEach((pId: string) => {
+          const parent = tempNodeMap.get(pId);
+          if (parent) {
+            parent.children.push(n);
+          }
+        });
+      }
+    });
+    const nodeInMap = tempNodeMap.get(d.id); // (v66 修复)
+    const hasChildren = nodeInMap ? nodeInMap.children.length > 0 : false; // (v66 修复)
 
-     // 5. 渲染媒体 (图片/视频) (1:1 恢复版)
-    if (d.data.media && d.data.media.rawPath) {
-      const mediaUrl = d.data.media.url
-      const isVideo = d.data.media.type === 'video'
+    if (hasChildren) {
+      const collapseBtn = div.append('xhtml:button')
+        .attr('class', 'absolute bottom-0 left-0 bg-gray-400 text-white rounded-full w-4 h-4 text-xs leading-4 text-center font-bold z-10 hover:bg-gray-600')
+        .style('transform', 'translate(-25%, 25%)')
+        .text(d._collapsed ? '+' : '-') // 根据状态显示 +/-
+        .node()! as HTMLButtonElement;
+      collapseBtn.addEventListener('mousedown', (event) => {
+        event.stopPropagation(); // 阻止 zoom
+      });
+      collapseBtn.addEventListener('click', (event) => {
+        event.stopPropagation(); // 阻止选中
+        emit('toggle-collapse', d.id); // 触发收缩/展开
+      });
+    }
+
+    // (v68 修复) 渲染媒体和 "+" 添加按钮
+    if (d.media && d.media.rawPath) {
+      const mediaUrl = d.media.url;
+      const isVideo = d.media.type === 'video';
       const canAddToStitch = true; 
 
       if (isVideo) {
-          // --- 视频的 "+" 按钮 (来自 index.html) ---
-            if (canAddToStitch) {
-              // (核心修复)
-              // 1. 创建元素并获取有类型的 DOM 节点
+          // --- 视频的 "+" 按钮 ---
+          if (canAddToStitch) {
               const addVideoBtn = div.append('xhtml:button')
-                .attr('class', 'bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
+                .attr('class', 'bg-blue-500 text-white ...') // (v50 样式)
                 .text('+')
                 .style('position','absolute')
                 .style('bottom','4px')
                 .style('right','4px')
-                .node()! as HTMLButtonElement; // <-- 1. 获取节点并断言类型
-
-              // 2. 在有类型的节点上添加监听器
+                .node()! as HTMLButtonElement;
               addVideoBtn.addEventListener('click', (event) => {
-                  event.stopPropagation(); // 阻止冒泡到 divNode (选中)
-                  emit('add-clip', d.data, 'video');
+                  event.stopPropagation();
+                  emit('add-clip', d, 'video'); // (v67 修复)
               });
           }
-          // --- 视频元素 (完完全全来自 index.html) ---
+          // --- 视频元素 ---
           const videoEl = div.append('xhtml:video')
             .attr('class', 'thumb')
             .attr('muted', true)
             .attr('playsinline', true)
             .attr('preload', 'metadata')
-            .node()! as HTMLVideoElement; 
+            .node()! as HTMLVideoElement;
           videoEl.autoplay = true;
           videoEl.loop = true;
           videoEl.muted = true;
           videoEl.playsInline = true;
           videoEl.src = mediaUrl;
-          videoEl.addEventListener('mousedown', (ev) => {
-            ev.stopPropagation();
-          });
+          videoEl.addEventListener('mousedown', (ev) => { ev.stopPropagation(); }); // (v24)
           videoEl.addEventListener('click', (ev) => {
-            console.log("---- 3.缩略图被打开 选中")
             ev.stopPropagation();
-            emit('open-preview', mediaUrl, 'video'); 
+            emit('open-preview', mediaUrl, d.media.type); // (v67 修复)
           });
 
       } else {
-          // --- 图片的 "+" 按钮 (来自 index.html) ---
-            if (canAddToStitch) {
-              // (核心修复)
-              // 1. 创建元素并获取有类型的 DOM 节点
+          // --- 图片的 "+" 按钮 ---
+          if (canAddToStitch) {
               const addImageBtn = div.append('xhtml:button')
-                .attr('class', 'bg-blue-500 text-white rounded-full w-5 h-5 text-xs leading-5 text-center font-bold opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
+                .attr('class', 'bg-blue-500 text-white ...') // (v50 样式)
                 .text('+')
                 .style('position','absolute')
                 .style('bottom','4px')
                 .style('right','4px')
-                .node()! as HTMLButtonElement; // <-- 1. 获取节点并断言类型
-
-              // 2. 在有类型的节点上添加监听器
+                .node()! as HTMLButtonElement;
               addImageBtn.addEventListener('click', (event) => {
-                  event.stopPropagation(); // 阻止冒泡到 divNode (选中)
-                  emit('add-clip', d.data, 'image');
+                  event.stopPropagation();
+                  emit('add-clip', d, 'image'); // (v67 修复)
               });
           }
-          // --- 图片元素 (完完全全来自 index.html) ---
+          // --- 图片元素 ---
           const imgEl = div.append('xhtml:img')
             .attr('class', 'thumb')
             .attr('src', mediaUrl)
-            .attr('alt', d.data.module_id || 'thumb')
+            .attr('alt', d.module_id || 'thumb') // (v67 修复)
             .node()! as HTMLImageElement;
-          imgEl.addEventListener('mousedown', (ev) => {
-            ev.stopPropagation();
-          });
+          imgEl.addEventListener('mousedown', (ev) => { ev.stopPropagation(); }); // (v24)
           imgEl.addEventListener('click', (ev) => {
-            console.log("---- 3.缩略图被打开 选中")
             ev.stopPropagation();
-            emit('open-preview', mediaUrl, 'image'); 
+            emit('open-preview', mediaUrl, d.media.type); // (v67 修复)
           });
       }
     } else {
-        // (无缩略图的占位符，保持不变)
+        // (无缩略图的占位符)
         div.append('xhtml:div')
             .attr('class', 'thumb')
             .style('display', 'flex')
@@ -422,12 +546,13 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
 
     // 10. 节点标签
     div.append('xhtml:div')
-      .attr('class', 'node-label') // 使用 style.css 中的 .node-label
-      .text(d.data.module_id || '(节点)')
-    // 11. Tooltip (鼠标悬停提示)
-    const titleText = (d.data.module_id || '') + (d.data.created_at ? ' · ' + d.data.created_at : '') + (d.data.status ? ' · ' + d.data.status : '')
-    d3.select(this).attr('title', titleText)
-  })
+      .attr('class', 'node-label')
+      .text(d.module_id || '(节点)'); // (v67 修复)
+    // 11. Tooltip
+    // (v67 修复)
+    const titleText = (d.module_id || '') + (d.created_at ? ' · ' + d.created_at : '') + (d.status ? ' · ' + d.status : '');
+    d3.select(this).attr('title', titleText);
+  });
 }
 
 

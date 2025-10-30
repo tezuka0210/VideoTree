@@ -7,8 +7,8 @@ const DB_API_GET_URL = '/api/trees/1'
 const DB_API_POST_URL = '/api/nodes'
 const ASSET_UPLOAD_URL = '/api/assets/upload'
 const STITCH_API_URL = '/api/stitch'
-const DELETE_API_URL = '/api/nodes' // 假设删除也用 /api/nodes/:id
-const COMFYUI_URL = 'http://223.193.6.178:8188' // 你的 ComfyUI 基础 URL
+const DELETE_API_URL = '/api/nodes'
+const COMFYUI_URL = 'http://223.193.6.178:8188' 
 
 export const workflowTypes = {
   red: { type: 'preprocess', defaultModuleId: 'ImageCanny', color: '#ef4444' }, // Red-500
@@ -67,13 +67,15 @@ interface AssetMedia {
 // 经过前端处理后，用于 D3 渲染和 App 内部使用的 Node 结构
 export interface AppNode {
   id: string;
-  parent_id: string | null; // 简化：只取第一个父节点用于 D3 树状布局
+  //parent_id: string | null; // 简化：只取第一个父节点用于 D3 树状布局
+  originalParents: string[] | null;
   module_id: string;
   created_at: string;
   status: string;
   media: AssetMedia | null; // 处理后的第一个媒体文件
   // originalParents: string | string[] | null; // (可选) 保留原始父ID信息
   linkColor?:string;
+  _collapsed?: boolean;
 }
 
 // 拼接序列中片段的类型
@@ -224,18 +226,26 @@ export function useWorkflow() {
         : null
 
       // D3 树状图只支持单个父节点，我们取第一个
-      const firstParentId = Array.isArray(n.parent_id) ? n.parent_id[0] : n.parent_id
+      //const firstParentId = Array.isArray(n.parent_id) ? n.parent_id[0] : n.parent_id
        // (Core Change 5) Assign linkColor based on module ID
       const linkColor = moduleIdToColor[n.module_id as keyof typeof moduleIdToColor];
+
+       let originalParents: string[] | null = null;
+      if (Array.isArray(n.parent_id)) {
+        originalParents = n.parent_id.length > 0 ? n.parent_id : null;
+      } else if (n.parent_id) { // 如果是单个字符串
+        originalParents = [n.parent_id];
+      }
       return {
         id: n.node_id,
-        parent_id: firstParentId || null,
+        //parent_id: firstParentId || null,
+        originalParents: originalParents,
         module_id: n.module_id,
         created_at: n.created_at,
         status: n.status,
         media: media,
-        // originalParents: n.parent_id // (可选)
-        linkColor: linkColor
+        linkColor: linkColor,
+        _collapsed: false
       }
     })
 
@@ -243,7 +253,34 @@ export function useWorkflow() {
     showStatus(statusMessage || '点击节点可设为父节点，点击缩略图可预览。')
   }
 
+    /** (新) 切换节点的收缩状态 */
+  function toggleNodeCollapse(nodeId: string) {
+    // (核心修复 1)
+    // 我们不使用 findIndex，而是直接 find 节点对象
+    const nodeToToggle = allNodes.value.find(n => n.id === nodeId);
 
+    // (核心修复 2)
+    // 我们直接检查对象是否存在，TypeScript 100% 能看懂这个
+    if (!nodeToToggle) {
+      console.warn(`Node with id ${nodeId} not found for collapsing.`);
+      return;
+    }
+    // (核心修复 3)
+    // 我们在 找到 节点后，再安全地获取它的索引
+    const nodeIndex = allNodes.value.indexOf(nodeToToggle);
+
+    // 2. (安全) 现在我们使用 100% 存在的 'nodeToToggle' 对象
+    const updatedNode = {
+        ...nodeToToggle,
+        _collapsed: !nodeToToggle._collapsed
+    };
+
+    // 3. 更新 allNodes 数组 (创建新数组以确保响应性)
+    const newNodes = [...allNodes.value];
+    newNodes[nodeIndex] = updatedNode;
+    allNodes.value = newNodes; // 这会触发 WorkflowTree 的 watch
+    console.log(`Node ${nodeId} collapsed state set to: ${updatedNode._collapsed}`);
+  }
   // --- 6. 导出的逻辑函数 (Actions) ---
 
   /** (Action) 从数据库加载和渲染整棵树 */
@@ -532,5 +569,6 @@ export function useWorkflow() {
     handleStitchRequest,
     openPreview,
     closePreview,
+    toggleNodeCollapse,
   }
 }

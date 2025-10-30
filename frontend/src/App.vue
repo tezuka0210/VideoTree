@@ -14,6 +14,7 @@
         @add-clip="addClipToStitch"
         @open-preview="openPreview"
         @open-generation="handleOpenGenerationPopover"
+        @toggle-collapse="toggleNodeCollapse"
       />
       <StitchingPanel
         v-model:clips="stitchingClips"
@@ -80,6 +81,7 @@ const {
   handleStitchRequest,
   openPreview,
   closePreview,
+  toggleNodeCollapse,
 } = useWorkflow()
 
 
