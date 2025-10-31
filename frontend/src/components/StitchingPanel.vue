@@ -2,88 +2,94 @@
   <div class="bg-white rounded shadow p-4">
     <h2 class="text-l font-semibold mb-4 text-gray-700">视频拼接序列</h2>
     <div
-      id="stitching-panel"
-      class="bg-gray-100 p-4 rounded border border-dashed border-gray-300 min-h-[100px]"
-      @dragover.prevent="handleDragOverContainer"
-      @dragleave="handleDragLeaveContainer"
-      @drop="handleDropContainer"
-      :class="{ 'drag-over': isDraggingOverContainer }"
-    >
-      <div id="clips-container">
-        <div
-          v-for="(clip, index) in clips"
-          :key="clip.nodeId"
-          class="clip-item"
-          :class="{ 'dragging': draggedClipIndex === index }"
-          :style="{ width: getClipWidth(clip) }"
-          draggable="true"
-          @dragstart="handleDragStart(index, $event)"
-          @dragover.prevent="handleDragOverItem(index)"
-          @dragleave="handleDragLeaveItem"
-          @drop.prevent="handleDropOnItem(index)"
-          @dragend="handleDragEnd"
-        >
-          <img
-            v-if="clip.type === 'image'"
-            :src="clip.thumbnailUrl"
-            class="thumb"
-            draggable="false"
-          />
-          <video
-            v-else
-            :src="clip.thumbnailUrl"
-            class="thumb"
-            autoplay loop muted playsinline
-            preload="metadata"
-            draggable="false"
-          ></video>
-
-          <span class="remove-btn" @click.stop="onRemoveClick(index)">×</span>
+      id="stitching-panel-wrapper"
+      class="bg-gray-100 border border-dashed border-gray-300 min-h-[100px]"
+      @wheel.prevent="handleZoom" >
+      <canvas id="timeline-ruler" style="width: 100%; height: 30px; background: #fafafa;"></canvas>
+      <div
+        id="stitching-panel"
+        class="bg-gray-100 p-4 rounded border border-dashed border-gray-300 min-h-[100px]"
+        @dragover.prevent="handleDragOverContainer"
+        @dragleave="handleDragLeaveContainer"
+        @drop="handleDropContainer"
+        :class="{ 'drag-over': isDraggingOverContainer }"
+      >
+        <div id="clips-container">
           <div
-            class="clip-controls"
-            style="padding: 4px; font-size: 10px; background: #f9f9f9;"
-            @mousedown.stop
+            v-for="(clip, index) in clips"
+            :key="clip.nodeId"
+            class="clip-item"
+            :class="{ 'dragging': draggedClipIndex === index }"
+            :style="{ width: getClipWidth(clip) }"
+            draggable="true"
+            @dragstart="handleDragStart(index, $event)"
+            @dragover.prevent="handleDragOverItem(index)"
+            @dragleave="handleDragLeaveItem"
+            @drop.prevent="handleDropOnItem(index)"
+            @dragend="handleDragEnd"
           >
-            <div v-if="clip.type === 'image'">
-              <label>时长:
-                <input
-                  type="number"
-                  :value="clip.duration"
-                  @change="onTimeChange(clip, 'duration', $event)"
-                  step="0.1" min="0.1" class="w-full"
-                />
-              </label>
+            <img
+              v-if="clip.type === 'image'"
+              :src="clip.thumbnailUrl"
+              class="thumb"
+              draggable="false"
+            />
+            <video
+              v-else
+              :src="clip.thumbnailUrl"
+              class="thumb"
+              autoplay loop muted playsinline
+              preload="metadata"
+              draggable="false"
+            ></video>
+
+            <span class="remove-btn" @click.stop="onRemoveClick(index)">×</span>
+            <div
+              class="clip-controls"
+              style="padding: 4px; font-size: 10px; background: #f9f9f9;"
+              @mousedown.stop
+            >
+              <div v-if="clip.type === 'image'">
+                <label>时长:
+                  <input
+                    type="number"
+                    :value="clip.duration"
+                    @change="onTimeChange(clip, 'duration', $event)"
+                    step="0.1" min="0.1" class="w-full"
+                  />
+                </label>
+              </div>
+              <div v-else>
+                <label>开始:
+                  <input
+                    type="number"
+                    :value="clip.startTime"
+                    @change="onTimeChange(clip, 'startTime', $event)"
+                    step="0.1" min="0" :max="clip.totalDuration" class="w-full"
+                  />
+                </label>
+                <label>结束:
+                  <input
+                    type="number"
+                    :value="clip.endTime"
+                    @change="onTimeChange(clip, 'endTime', $event)"
+                    step="0.1" min="0" :max="clip.totalDuration" class="w-full"
+                  />
+                </label>
+              </div>
             </div>
-            <div v-else>
-              <label>开始:
-                <input
-                  type="number"
-                  :value="clip.startTime"
-                  @change="onTimeChange(clip, 'startTime', $event)"
-                  step="0.1" min="0" :max="clip.totalDuration" class="w-full"
-                />
-              </label>
-              <label>结束:
-                <input
-                  type="number"
-                  :value="clip.endTime"
-                  @change="onTimeChange(clip, 'endTime', $event)"
-                  step="0.1" min="0" :max="clip.totalDuration" class="w-full"
-                />
-              </label>
-            </div>
+
+            <div
+              v-if="draggedOverIndex === index"
+              class="absolute inset-0 bg-blue-500 opacity-50 border-2 border-blue-700 pointer-events-none"
+              style="border-radius: 4px;"
+            ></div>
+
           </div>
-
-          <div
-            v-if="draggedOverIndex === index"
-            class="absolute inset-0 bg-blue-500 opacity-50 border-2 border-blue-700 pointer-events-none"
-            style="border-radius: 4px;"
-          ></div>
-
+          <span v-if="clips.length === 0" id="clips-placeholder" class="text-gray-500 italic">
+            从上方历史树中添加视频片段到此区域...
+          </span>
         </div>
-        <span v-if="clips.length === 0" id="clips-placeholder" class="text-gray-500 italic">
-          从上方历史树中添加视频片段到此区域...
-        </span>
       </div>
     </div>
     <button
@@ -108,39 +114,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import type { StitchingClip, ImageClip, VideoClip } from '@/composables/useWorkflow'
+import * as VideoEditingTimeline from 'video-editing-timeline'
 
 // --- 1. Props (由 App.vue 传入) ---
-
-// (重要) 我们使用 v-model:clips 来接收和更新 clips 数组
 const clips = defineModel<StitchingClip[]>('clips', { required: true })
-
 const props = defineProps<{
   isStitching: boolean;
   stitchResultUrl: string | null;
 }>()
 
 // --- 2. Emits (向 App.vue 传出) ---
-
 const emit = defineEmits<{
   (e: 'remove-clip', index: number): void;
   (e: 'stitch'): void;
 }>()
 
 // --- 3. 本地状态 (用于拖拽) ---
-
 const draggedClipIndex = ref<number | null>(null)
-const draggedOverIndex = ref<number | null>(null) // 用于高亮
+const draggedOverIndex = ref<number | null>(null)
 const isDraggingOverContainer = ref(false)
 
-// --- 4. 样式计算 ---
+// --- 4. 样式计算 (核心修改) ---
 
-const PIXELS_PER_SECOND = 20; // 每秒钟 20 像素
+// (响应式) 缩放状态
+const pixelsPerSecond = ref(20) // 初始值：每秒 20 像素
 
 /**
- * 根据片段时长计算其在时间轴上的宽度
- */
+- 根据片段时长计算其在时间轴上的宽度 (现在是动态的)
+*/
 function getClipWidth(clip: StitchingClip): string {
   let clipDuration: number;
   if (clip.type === 'video') {
@@ -148,10 +151,57 @@ function getClipWidth(clip: StitchingClip): string {
   } else {
     clipDuration = clip.duration
   }
-  // 最小 50px 宽
-  return `${Math.max(50, clipDuration * PIXELS_PER_SECOND)}px`
+  return `${Math.max(50, clipDuration * pixelsPerSecond.value)}px`
 }
 
+
+// --- 5. 时间轴标尺 (Timeline Ruler) 逻辑 (核心修改) ---
+
+// (获取构造函数) 
+const Constructor = (VideoEditingTimeline as any).default || VideoEditingTimeline
+
+/**
+- (新) 绘制/重绘时间轴的函数
+- 这是解决问题的关键。我们不再存储实例，而是每次都重新创建它。
+*/
+function drawTimeline(pxPerSec: number) {
+  const canvasEl = document.getElementById('timeline-ruler') as HTMLCanvasElement
+  if (!canvasEl) {
+    console.error('Canvas #timeline-ruler not found')
+    return
+  }
+
+  // 动态调整刻度，让其更智能
+  let newScaleTime = 1;
+  let newScalePx = pxPerSec;
+
+  if (pxPerSec > 100) { // 放大时，刻度更密
+    newScaleTime = 0.5;
+    newScalePx = pxPerSec * 0.5;
+  } else if (pxPerSec < 10) { // 缩小时，刻度更疏
+    newScaleTime = 5;
+    newScalePx = pxPerSec * 5;
+  }
+  // 每次都创建一个 新 的实例。
+  // 这会清除旧的 canvas 并绘制新的。
+  new Constructor({
+    el: '#timeline-ruler', // <-- 关键：确保这和你 <template> 中的 ID 一致
+    canvasWidth: canvasEl.clientWidth,
+    canvasHeight: 30,
+    minimumScale: newScalePx,
+    minimumScaleTime: newScaleTime,
+  })
+}
+
+onMounted(() => {
+  // 初始绘制
+  drawTimeline(pixelsPerSecond.value)
+})
+
+watch(pixelsPerSecond, (newPxPerSec) => {
+  // 缩放时重绘
+  drawTimeline(newPxPerSec)
+})
 // --- 5. 事件处理器 ---
 
 function onRemoveClick(index: number) {
@@ -197,7 +247,16 @@ function onTimeChange(
   // B. 将验证后的值写回输入框，防止UI与数据不同步
   target.value = value.toFixed(field === 'duration' ? 1 : 2)
 }
-
+/**
+- (新) 处理缩放的事件
+*/
+function handleZoom(event: WheelEvent) {
+  // event.deltaY > 0 是缩小, < 0 是放大
+  const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1
+  const newPixelsPerSecond = pixelsPerSecond.value * zoomFactor
+  // 限制缩放范围
+  pixelsPerSecond.value = Math.max(5, Math.min(500, newPixelsPerSecond))
+}
 
 // --- 6. 拖拽与排序 (Drag and Drop) 逻辑 ---
 
