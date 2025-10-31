@@ -196,57 +196,72 @@ def index():
 @app.route("/view", methods=["GET"])
 def view_file():
     filename = request.args.get("filename")
+    subfolder = request.args.get("subfolder", "")
+    file_type = request.args.get("type", "output") # (v89 修复) 1. 读取 'type' 参数
+
     if not filename:
         return abort(400, "缺少 filename 参数")
 
-    # 搜索路径
-    image_path = os.path.join(IMAGE_DIR, filename)
-    video_path = os.path.join(VIDEO_DIR, filename)
-
-    if os.path.exists(image_path):
-        file_path = image_path
-    elif os.path.exists(video_path):
-        file_path = video_path
+    # (v89 修复) 2. 根据 'type' 决定搜索路径
+    if file_type == "input":
+        # 如果是 'input' 类型, 只在 input 目录查找
+        file_path = os.path.join(COMFYUI_INPUT_PATH, filename)
     else:
-        return abort(404, f"文件 {filename} 不存在")
+        # 否则 (output, temp, etc.)，在 output/ 或 output/video/ 查找
+        base_output_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder)
+        file_path = os.path.join(base_output_path, filename)
+        # (v89 修复) 增加对 output/video 的兼容
+        if not os.path.exists(file_path) and subfolder != "video":
+             video_path_alt = os.path.join(COMFYUI_OUTPUT_PATH, "video", filename)
+             if os.path.exists(video_path_alt):
+                 file_path = video_path_alt
+
+    if not os.path.exists(file_path):
+        return abort(404, f"文件 {filename} (类型: {file_type}) 在路径 {file_path} 中不存在")
 
     mime_type, _ = mimetypes.guess_type(file_path)
     if mime_type is None:
         mime_type = "application/octet-stream"
 
-    # --- 视频 Range 支持 ---
+    # --- (v89 核心修复) 视频流逻辑 ---
     if mime_type.startswith("video/"):
         try:
             file_size = os.path.getsize(file_path)
             range_header = request.headers.get("Range", None)
 
+            start = 0
+            end = file_size - 1
+            length = file_size
+            status_code = 200 # (v89 修复) 默认 200
+
             if range_header:
-                # Range 请求
-                start, end = range_header.replace("bytes=", "").split("-")
-                start = int(start)
-                end = int(end) if end else file_size - 1
+                # (v89 修复) Case 1: 浏览器请求 'Range' (206)
+                status_code = 206
+                start_str, end_str = range_header.replace("bytes=", "").split("-")
+                start = int(start_str)
+                end = int(end_str) if end_str else file_size - 1
                 length = end - start + 1
-
-                with open(file_path, "rb") as f:
-                    f.seek(start)
-                    data = f.read(length)
-
-                rv = Response(data, 206, mimetype=mime_type)
-                rv.headers.add("Content-Range", f"bytes {start}-{end}/{file_size}")
-                rv.headers.add("Accept-Ranges", "bytes")
-                rv.headers.add("Content-Length", str(length))
-                rv.headers.add("X-Content-Type-Options", "nosniff")
-                return rv
             else:
-                # 首次请求（非 Range）
-                rv = send_file(file_path, mimetype=mime_type)
-                rv.headers.add("Accept-Ranges", "bytes")
-                rv.headers.add("X-Content-Type-Options", "nosniff")
-                return rv
+                # (v89 修复) Case 2: 浏览器 没有 请求 'Range' (200)
+                # 我们 必须 强制发送 206，并假装它请求了 'bytes=0-'
+                # 这样 Chrome 才能在 foreignObject 中播放
+                status_code = 206
+                # (start=0, end=file_size-1, length=file_size 保持不变)
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                data = f.read(length)
+
+            rv = Response(data, status_code, mimetype=mime_type)
+            rv.headers.add("Content-Range", f"bytes {start}-{end}/{file_size}")
+            rv.headers.add("Accept-Ranges", "bytes")
+            # (v84 修复) Content-Length 由 Flask/Response 自动添加
+            rv.headers.add("X-Content-Type-Options", "nosniff")
+            return rv
+
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    # --- 图片或其他文件 ---
+    # --- 图片或其他文件 (保持不变) ---
     rv = send_file(file_path, mimetype=mime_type)
     rv.headers.add("X-Content-Type-Options", "nosniff")
     return rv

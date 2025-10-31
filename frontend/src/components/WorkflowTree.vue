@@ -411,9 +411,12 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
     // (v52/v68) 三色圆点
     const dotsContainer = div.append('xhtml:div')
       .attr('class', `
-        absolute top-0 right-1 h-full        flex flex-col items-center justify-center space-y-1
+        absolute h-full        flex flex-col items-center justify-center space-y-1
         opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10
-      `); // (v51 样式)
+      `)
+      .style('position','absolute')
+      .style('top','4px')
+      .style('right','4px'); // (v51 样式)
     (['red', 'yellow', 'green'] as const).forEach((colorKey, index) => {
       const workflowInfo = workflowTypes[colorKey];
       const dotBtn = dotsContainer.append('xhtml:button')
@@ -468,19 +471,34 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
 
     // (v68 修复) 渲染媒体和 "+" 添加按钮
     if (d.media && d.media.rawPath) {
+      // const mediaUrl = d.media.url;
+      // const isVideo = d.media.type === 'video';
+      // const canAddToStitch = true; 
       const mediaUrl = d.media.url;
-      const isVideo = d.media.type === 'video';
+      const rawPath = d.media.rawPath;
+      const isVideo = (typeof rawPath === 'string') && (rawPath.includes('.mp4') || rawPath.includes('subfolder=video'));
       const canAddToStitch = true; 
-
       if (isVideo) {
           // --- 视频的 "+" 按钮 ---
           if (canAddToStitch) {
               const addVideoBtn = div.append('xhtml:button')
-                .attr('class', 'bg-blue-500 text-white ...') // (v50 样式)
-                .text('+')
+                .attr('class', 'opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
+                .html('&#9658;')
+                // (核心 v83) 2. 强制设置*所有*样式
                 .style('position','absolute')
                 .style('bottom','4px')
                 .style('right','4px')
+                .style('width', '20px')   // (v82 w-5)
+                .style('height', '20px')  // (v82 h-5)
+                .style('display', 'flex') // (v82 flex)
+                .style('align-items', 'center') // (v82 items-center)
+                .style('justify-content', 'center') // (v82 justify-center)
+                .style('color', '#3b82f6') // (核心 v83) 强制设置 text-blue-500
+                .style('font-size', '1.125rem') // (v82 text-lg)
+                .style('border', 'none')       // (v52)
+                .style('background-color', 'transparent') // (v83) 强制透明背景
+                .style('padding', '0')         // (v52)
+                .style('cursor', 'pointer')
                 .node()! as HTMLButtonElement;
               addVideoBtn.addEventListener('click', (event) => {
                   event.stopPropagation();
@@ -509,11 +527,23 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
           // --- 图片的 "+" 按钮 ---
           if (canAddToStitch) {
               const addImageBtn = div.append('xhtml:button')
-                .attr('class', 'bg-blue-500 text-white ...') // (v50 样式)
-                .text('+')
+                .attr('class', 'opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity duration-150')
+                .html('&#9658;')
+                // (核心 v83) 2. 强制设置*所有*样式
                 .style('position','absolute')
                 .style('bottom','4px')
                 .style('right','4px')
+                .style('width', '20px')   // (v82 w-5)
+                .style('height', '20px')  // (v82 h-5)
+                .style('display', 'flex') // (v82 flex)
+                .style('align-items', 'center') // (v82 items-center)
+                .style('justify-content', 'center') // (v82 justify-center)
+                .style('color', '#3b82f6') // (核心 v83) 强制设置 text-blue-500
+                .style('font-size', '1.125rem') // (v82 text-lg)
+                .style('border', 'none')       // (v52)
+                .style('background-color', 'transparent') // (v83) 强制透明背景
+                .style('padding', '0')         // (v52)
+                .style('cursor', 'pointer')
                 .node()! as HTMLButtonElement;
               addImageBtn.addEventListener('click', (event) => {
                   event.stopPropagation();

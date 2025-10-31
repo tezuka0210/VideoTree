@@ -1,7 +1,7 @@
 <template>
   <div class="container mx-auto p-4 h-full flex flex-col">
     <header class="text-center mb-6">
-      <h1 class="text-3xl font-semibold text-gray-800">工作流创作与回顾</h1>
+      <h1 class="text-3xl font-semibold" style="color:#374151;">Workflow Creation and Review</h1>
       <p id="status" class="text-gray-500 mt-1">{{ statusText }}</p>
     </header>
 

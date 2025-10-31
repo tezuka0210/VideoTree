@@ -268,7 +268,7 @@ const workflowParameters: Record<string, FormParameter[]> = {
   'TextGenerateVideo': [
     { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
     { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
-    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
     { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
     { id: 'height', label: 'height', type: 'number',defaultValue: 512},
@@ -278,7 +278,7 @@ const workflowParameters: Record<string, FormParameter[]> = {
   'ImageGenerateVideo': [
     { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
     { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
-    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
     { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
     { id: 'height', label: 'height', type: 'number',defaultValue: 512},
@@ -288,7 +288,7 @@ const workflowParameters: Record<string, FormParameter[]> = {
   'FLFrameToVideo': [
     { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
     { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
-    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
     { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
     { id: 'height', label: 'height', type: 'number',defaultValue: 512},
@@ -298,7 +298,7 @@ const workflowParameters: Record<string, FormParameter[]> = {
   'CameraControl': [
     { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
     { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
-    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'camera_pose', label:'camera_pose', type:'select', options:['Pan Up', 'Pan Down', 'Pan Left', 'Pan Right', 'Zoom In', 'Zoom Out', 'Anti Clockwise (ACW)', 'ClockWise (CW)'], defaultValue : 'Pan Up'},
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
     { id: 'width', label: 'width', type: 'number', defaultValue: 1024},

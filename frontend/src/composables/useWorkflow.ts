@@ -180,7 +180,7 @@ export function useWorkflow() {
     if (!path) return null
     if (path.startsWith('http://') || path.startsWith('https://')) return path
     const cleanPath = path.startsWith('/') ? path : '/' + path
-    return COMFYUI_URL + cleanPath  /*COMFYUI_URL + */
+    return cleanPath  /*COMFYUI_URL + */
   }
 
   /** 异步获取视频时长 */
