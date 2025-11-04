@@ -17,10 +17,11 @@
         <div id="clips-container">
           <div
             v-for="(clip, index) in clips"
-            :key="clip.nodeId"
+            :key="`${clip.nodeId}-${pixelsPerSecond}`"
             class="clip-item"
             :class="{ 'dragging': draggedClipIndex === index }"
-            :style="{ width: getClipWidth(clip) }"
+           
+            :style="{ width: clipWidths[index]}"
             draggable="true"
             @dragstart="handleDragStart(index, $event)"
             @dragover.prevent="handleDragOverItem(index)"
@@ -49,34 +50,6 @@
               style="padding: 4px; font-size: 10px; background: #f9f9f9;"
               @mousedown.stop
             >
-              <div v-if="clip.type === 'image'">
-                <label>时长:
-                  <input
-                    type="number"
-                    :value="clip.duration"
-                    @change="onTimeChange(clip, 'duration', $event)"
-                    step="0.1" min="0.1" class="w-full"
-                  />
-                </label>
-              </div>
-              <div v-else>
-                <label>开始:
-                  <input
-                    type="number"
-                    :value="clip.startTime"
-                    @change="onTimeChange(clip, 'startTime', $event)"
-                    step="0.1" min="0" :max="clip.totalDuration" class="w-full"
-                  />
-                </label>
-                <label>结束:
-                  <input
-                    type="number"
-                    :value="clip.endTime"
-                    @change="onTimeChange(clip, 'endTime', $event)"
-                    step="0.1" min="0" :max="clip.totalDuration" class="w-full"
-                  />
-                </label>
-              </div>
             </div>
 
             <div
@@ -114,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import type { StitchingClip, ImageClip, VideoClip } from '@/composables/useWorkflow'
 import * as VideoEditingTimeline from 'video-editing-timeline'
 
@@ -139,15 +112,19 @@ const isDraggingOverContainer = ref(false)
 // --- 4. 样式计算 (核心修改) ---
 
 // (响应式) 缩放状态
-const pixelsPerSecond = ref(20) // 初始值：每秒 20 像素
-
+const pixelsPerSecond = ref(40) // 初始值：每秒 20 像素
+/* 返回与 clips 一一对应的宽度数组 */
+const clipWidths = computed(() =>
+  clips.value.map(c => `${Math.max(50, c.duration * pixelsPerSecond.value)}px`)
+)
 /**
 - 根据片段时长计算其在时间轴上的宽度 (现在是动态的)
 */
 function getClipWidth(clip: StitchingClip): string {
   let clipDuration: number;
   if (clip.type === 'video') {
-    clipDuration = clip.endTime - clip.startTime
+    // clipDuration = clip.endTime - clip.startTime
+    clipDuration = clip.duration
   } else {
     clipDuration = clip.duration
   }
@@ -233,15 +210,17 @@ function onTimeChange(
     clip.duration = value // 直接修改 prop
   }
   else if (clip.type === 'video') {
-    if (field === 'startTime') {
-      if (value >= clip.endTime) value = clip.endTime - 0.1
-      clip.startTime = value // 直接修改 prop
-    }
-    if (field === 'endTime') {
-      if (value <= clip.startTime) value = clip.startTime + 0.1
-      if (value > clip.totalDuration) value = clip.totalDuration
-      clip.endTime = value // 直接修改 prop
-    }
+    // if (field === 'startTime') {
+    //   if (value >= clip.endTime) value = clip.endTime - 0.1
+    //   clip.startTime = value // 直接修改 prop
+    // }
+    // if (field === 'endTime') {
+    //   if (value <= clip.startTime) value = clip.startTime + 0.1
+    //   if (value > clip.totalDuration) value = clip.totalDuration
+    //   clip.endTime = value // 直接修改 prop
+    // }
+    if (value < 0.1) value = 0.1
+    clip.duration = value // 直接修改 prop
   }
 
   // B. 将验证后的值写回输入框，防止UI与数据不同步
@@ -255,7 +234,7 @@ function handleZoom(event: WheelEvent) {
   const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1
   const newPixelsPerSecond = pixelsPerSecond.value * zoomFactor
   // 限制缩放范围
-  pixelsPerSecond.value = Math.max(5, Math.min(500, newPixelsPerSecond))
+  pixelsPerSecond.value = Math.max(10, Math.min(800, newPixelsPerSecond))
 }
 
 // --- 6. 拖拽与排序 (Drag and Drop) 逻辑 ---

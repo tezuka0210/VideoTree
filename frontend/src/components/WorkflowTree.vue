@@ -354,7 +354,7 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
     // --- 1. <foreignObject> (140x140) ---
     const fo = gElement.append('foreignObject')
       .attr('width', 140)
-      .attr('height', 200) // (注意: 140px 的高度对于 3 行布局来说非常紧张)
+      .attr('height', 140) // (注意: 140px 的高度对于 3 行布局来说非常紧张)
       .attr('x', -70)
       .attr('y', -70)
       .style('overflow', 'visible');
@@ -430,7 +430,7 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
       .style('flex-shrink', '0'); // (v-NEW) 不收缩
     // 3a. 标题 (这就是你原来的 node-label)
     headerDiv.append('xhtml:h3')
-      .style('font-size', '12px')
+      .style('font-size', '8px')
       .style('font-weight', '700')
       .style('color', '#1f2937')
       .style('overflow', 'hidden')
@@ -441,18 +441,19 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
     // 3b. 删除按钮 "×"
     if (d.module_id !== 'Init' && d.module_id !== 'ROOT') {
       headerDiv.append('xhtml:button')
-        .style('background-color', '#ef4444')
-        .style('color', '#ffffff')
-        .style('border-radius', '4px')
+        .style('background-color', '#ffffff')
+        .style('color', '#E4080A')
+        .style('border-radius', '50%')
+        .style('border', 'none')
         .style('width', '16px')
         .style('height', '16px')
-        .style('font-size', '12px')
+        .style('font-size', '16px')
         .style('line-height', '16px')
         .style('text-align', 'center')
         .style('border', 'none')
         .style('cursor', 'pointer')
         .style('flex-shrink', '0') // (v-NEW) 防止被标题挤压
-        .text('X')
+        .html('&#xD7;')
         .on('mousedown', (event) => {
           console.log(`[DEBUG] 'X' 按钮 MouseDown (Node ${d.id}). 阻止冒泡。`);
           event.stopPropagation();
@@ -609,7 +610,7 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
         .style('overflow-y', 'auto') // (v-NEW) 允许滚动
         .style('padding', '4px')
         .style('border-top', '1px solid #e5e7eb')
-        .style('font-size', '10px')
+        .style('font-size', '6px')
         .style('color', '#374151') // (gray-700)
         .style('white-space', 'pre-wrap') // (v-NEW) 尊重换行
         .style('word-break', 'break-all') // (v-NEW) 自动断词
@@ -679,15 +680,16 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
 
     if (hasChildren) {
       div.append('xhtml:button')
+        .attr('class','collapse-btn')
         .style('position', 'absolute')
-        .style('bottom', '0')
+        .style('bottom', '8px')
         .style('left', '0')
-        .style('background-color', '#9ca3af')
-        .style('color', '#ffffff')
-        .style('border-radius', '9999px')
+        .style('background-color', '#ffffff')
+        .style('color', d._collapsed ?'#E4080A':'#9ca3af')
+        .style('border-radius', '50%')
         .style('width', '16px')
         .style('height', '16px')
-        .style('font-size', '12px')
+        .style('font-size', '16px')
         .style('line-height', '16px')
         .style('text-align', 'center')
         .style('font-weight', '700')
@@ -697,10 +699,10 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
         .style('transition', 'background-color 0.15s ease-in-out')
         .style('transform', 'translate(-25%, 25%)')
         .text(d._collapsed ? '+' : '-')
-        .on('mouseenter', function() { d3.select(this).style('background-color', '#4b5563'); })
-        .on('mouseleave', function() { d3.select(this).style('background-color', '#9ca3af'); })
+        .on('mouseenter', function() { d3.select(this).style('background-color', '#ffffff'); })
+        .on('mouseleave', function() { d3.select(this).style('background-color', '#ffffff'); })
         .on('mousedown', (event) => {
-          console.log(`[DEBUG] '+/-' 按钮 MouseDown (Node ${d.id}). 阻止冒泡。`);
+          console.log(`[DEBUG] '+/-' 按钮 MouseDown (Node ${d.id}). 阻止冒泡。${d._collapsed}`);
           event.stopPropagation();
         })
         .on('click', (event) => {
@@ -733,20 +735,24 @@ function updateVisibility(svgElement: SVGSVGElement, allNodesData: AppNode[]) {
 
   // 2. 更新节点 (Node) 的可见性
   // (我们选择所有 .node，并根据 d.id 是否在 new visible set 中来切换 display)
-  d3.select(svgElement).selectAll<SVGGElement, AppNode>('.node')
-    .style('display', function(d) {
-      // d 是我们绑定到 .node 上的 AppNode 数据 (d.id)
-      return visibleNodeIds.has(d.id) ? null : 'none'; // null 会移除内联样式
+ d3.select(svgElement)
+    .selectAll<SVGGElement, AppNode>('.node')
+    .style('display', d => visibleNodeIds.has(d.id) ? null : 'none')
+    .each(function(d) {
+      // ✅ 更新按钮文本
+      const button = d3.select(this).select<HTMLButtonElement>('button.collapse-btn');
+      if (button.size()) {
+        console.log('[updateVisbility] node',d.id,'_collapsed=',d._collapsed);
+        button.text(d._collapsed ? '+' : '-')
+        .style('color',d._collapsed?'#E4080A':'#9ca3af');
+      }
     });
 
-  // 3. 更新连线 (Link) 的可见性
-  // (我们选择所有 .link，并根据 d.v 和 d.w (source/target ID) 来切换 display)
-  d3.select(svgElement).selectAll<SVGPathElement, any>('.link')
-    .style('display', function(d) {
-      // d 是 dagreEdges 的数据: { v: sourceId, w: targetId, points: [...] }
-      const linkId = `${d.v}->${d.w}`;
-      return visibleLinkIds.has(linkId) ? null : 'none';
-    });
+  // 更新连线可见性
+  d3.select(svgElement)
+    .selectAll<SVGPathElement, any>('.link')
+    .style('display', d => visibleLinkIds.has(`${d.v}->${d.w}`) ? null : 'none');
+
 }
 
 

@@ -92,10 +92,11 @@ export interface VideoClip {
   nodeId: string;
   mediaPath: string; // 原始相对路径
   thumbnailUrl: string;
+  duration:number
   type: 'video';
-  startTime: number;
-  endTime: number;
-  totalDuration: number;
+  //startTime: number;
+  //endTime: number;
+  //totalDuration: number;
 }
 
 // 使用 "可辨识联合类型" (Discriminated Union)
@@ -260,33 +261,16 @@ export function useWorkflow() {
   }
 
     /** (新) 切换节点的收缩状态 */
-  function toggleNodeCollapse(nodeId: string) {
-    // (核心修复 1)
-    // 我们不使用 findIndex，而是直接 find 节点对象
-    const nodeToToggle = allNodes.value.find(n => n.id === nodeId);
 
-    // (核心修复 2)
-    // 我们直接检查对象是否存在，TypeScript 100% 能看懂这个
-    if (!nodeToToggle) {
-      console.warn(`Node with id ${nodeId} not found for collapsing.`);
-      return;
-    }
-    // (核心修复 3)
-    // 我们在 找到 节点后，再安全地获取它的索引
-    const nodeIndex = allNodes.value.indexOf(nodeToToggle);
 
-    // 2. (安全) 现在我们使用 100% 存在的 'nodeToToggle' 对象
-    const updatedNode = {
-        ...nodeToToggle,
-        _collapsed: !nodeToToggle._collapsed
-    };
+function toggleNodeCollapse(nodeId: string) {
+  const node = allNodes.value.find(n => n.id === nodeId);
+  if (!node) return;
+  // 原地改，数组引用不变
+  node._collapsed = !node._collapsed;
+  console.log(`[parent] 节点 ${nodeId} -> _collapsed = ${node._collapsed}`);
+}
 
-    // 3. 更新 allNodes 数组 (创建新数组以确保响应性)
-    const newNodes = [...allNodes.value];
-    newNodes[nodeIndex] = updatedNode;
-    allNodes.value = newNodes; // 这会触发 WorkflowTree 的 watch
-    console.log(`Node ${nodeId} collapsed state set to: ${updatedNode._collapsed}`);
-  }
   // --- 6. 导出的逻辑函数 (Actions) ---
 
   /** (Action) 从数据库加载和渲染整棵树 */
@@ -466,9 +450,10 @@ export function useWorkflow() {
           mediaPath: node.media.rawPath,
           thumbnailUrl: node.media.url,
           type: 'video',
-          startTime: 0,
-          endTime: videoDuration,
-          totalDuration: videoDuration
+          duration: videoDuration,
+          // startTime: 0,
+          // endTime: videoDuration,
+          // totalDuration: videoDuration
         })
       } else {
         stitchingClips.push({
@@ -504,7 +489,7 @@ export function useWorkflow() {
       if (clip.type === 'image') {
         return { path: clip.mediaPath, type: clip.type, duration: clip.duration }
       } else { // 'video'
-        return { path: clip.mediaPath, type: clip.type, startTime: clip.startTime, endTime: clip.endTime }
+        return { path: clip.mediaPath, type: clip.type, duration: clip.duration }
       }
     })
 
