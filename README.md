@@ -1,6 +1,74 @@
-前端界面：/backend/templates/index.html
+# AI 视频工作流管理系统 (本地演示版)
 
-- 工作流存储位置：video_tree/backend/workflows
+本项目是一个用于管理和执行 AI 图像/视频生成工作流的可视化平台。它旨在将 ComfyUI 的复杂能力封装在一个更友好、可追溯的界面中，用于介绍视频的AIGC内容生产。
+
+这个版本是**本地演示版**
+
+---
+
+## 核心功能
+
+* **可视化工作流**: 以树状图展示所有生成历史，节点间的父子关系一目了然。
+* **查看节点详情**: 点击节点卡片，可查看该节点生成的提示词 (Prompt)。
+* **视频/图片预览**: 点击节点上的缩略图可放大预览。
+* **视频拼接**: 可将任意节点的结果添加到拼接序列，并生成一个新视频。
+
+---
+
+### 依赖环境
+
+请确保您的电脑已安装：
+* Python (3.8 或更高版本)
+* Node.js (v18 或更高版本)
+
+### 步骤 1：启动后端 (Python Flask)
+
+1.  打开一个终端，进入 `video_tree/backend/` 目录。
+    ```bash
+    cd path/to/video_tree/backend
+    ```
+2. 启动后端服务器：
+    ```bash
+    python app.py
+    ```
+
+### 步骤 2：启动前端 (Vue.js)
+
+1.  打开新的终端，进入 `video_tree/frontend/` 目录。
+    ```bash
+    cd path/to/video_tree/frontend
+    ```
+2.  安装 Node.js 依赖：
+    ```bash
+    npm install
+    ```
+3.  启动前端开发服务器：
+    ```bash
+    npm run dev
+    ```
+
+### 步骤 3：访问应用
+
+打开浏览器访问：
+`http://localhost:5173`
+
+---
+
+## 如何使用
+
+* **查看节点**: 页面加载后，会看到数据库中已有的工作流。
+* **查看 Prompt**: 对于有 `positive_prompt` 参数的节点 (如文生图节点)，卡片底部会自动显示提示词。
+* **生成**:
+    1.  红：输入内容预处理工作流
+    2.  黄：生图工作流
+    3.  绿：生视频工作流
+* **视频拼接**:
+    1.  点击任意节点缩略图上的 "▶" 按钮，将其添加到下方的拼接栏。
+    3.  点击拼接栏右下角的“开始拼接”按钮，系统将生成拼接后的视频。
+
+
+
+* **工作流存储位置**：video_tree/backend/workflows
   - CameraControl.json 运镜工作流
     - CLIP Text Encode (Negative Prompt) > text
     - CLIP Text Encode (Positive Prompt) > text
