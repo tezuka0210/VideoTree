@@ -195,7 +195,13 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
   // 4. (关键) 告诉 Dagre *所有*可见节点的尺寸
   visibleNodes.forEach(node => {
     // (v71) 我们使用固定的 140x140 尺寸
-    g.setNode(node.id, { label: node.module_id, width: 140, height: 140 });
+    //g.setNode(node.id, { label: node.module_id, width: 140, height: 140 });
+    const isInit = node.module_id === 'Init';
+    g.setNode(node.id, {
+      label: node.module_id,
+      width: isInit ? 60 : 140,
+      height: isInit ? 60 : 140
+    });
   });
 
   // 5. (关键) 告诉 Dagre 所有的连线
@@ -350,6 +356,39 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
   // (v-FINAL-COMPLETE) node.each(...) 3行布局 + 补全所有功能
   nodeElements.each(function (d: any) {
     const gElement = d3.select(this);
+
+    // 1. 特例：Init 节点 -> 纯圆形，无卡片
+  if (d.module_id === 'Init') {
+    // 1-1 圆形
+    gElement.append('circle')
+      .attr('r', 30)
+      .attr('fill', '#ffffff')          // 灰色
+      .attr('stroke', '#6b7280')
+      .attr('stroke-width', 2);
+
+    // 1-2 文字
+    gElement.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dy', '0.35em')             // 垂直居中
+      .style('font-size', '14px')
+      .style('fill', '#6b7280')
+      .style('pointer-events', 'none')  // 文字不挡点击
+      .text('Init');
+
+    // 1-3 点击事件（保留选中逻辑）
+    gElement.style('cursor', 'pointer')
+      .on('click', (event) => {
+        event.stopPropagation();
+        // 下面复用你原来的选中 emit 逻辑
+        const currentSelectedIds = [...props.selectedIds];
+        const idx = currentSelectedIds.indexOf(d.id);
+        if (idx > -1) currentSelectedIds.splice(idx, 1);
+        else if (currentSelectedIds.length < 2) currentSelectedIds.push(d.id);
+        else return;
+        emit('update:selectedIds', currentSelectedIds);
+      });
+    return;
+  }
 
     // --- 1. <foreignObject> (140x140) ---
     const fo = gElement.append('foreignObject')

@@ -15,6 +15,7 @@ from typing import Optional
 from moviepy import VideoFileClip, concatenate_videoclips,ImageClip
 # 导入之前设计的数据库操作模块
 import database
+import random
 
 # --- 1. 初始化与配置 ---
 
@@ -22,19 +23,34 @@ load_dotenv()
 app = Flask(__name__, template_folder='templates')
 CORS(app)
 
+# --- 模式开关 ----
+APP_MODE = os.getenv('APP_MODE', 'local') 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
+
 # --- 配置常量 ---
 COMFYUI_SERVER_ADDRESS = "223.193.6.178:8188" # ComfyUI后端的地址和端口
 CLIENT_ID = str(uuid.uuid4()) # 为我们的后端应用生成一个唯一的客户端ID
 # UPLOAD_FOLDER = 'assets'
 # os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-BASE_COMFYUI_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'comfyui', 'comfyui'))
-COMFYUI_INPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'input')
-COMFYUI_OUTPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'output')
+
+if APP_MODE == 'local':
+    # 本地模式：使用 backend/local_assets 文件夹
+    LOCAL_ASSETS_PATH = os.path.join(BASE_DIR, 'local_assets')
+    COMFYUI_INPUT_PATH = os.path.join(LOCAL_ASSETS_PATH, 'input')
+    COMFYUI_OUTPUT_PATH = os.path.join(LOCAL_ASSETS_PATH, 'output')
+    print(f"本地模式：使用 '{LOCAL_ASSETS_PATH}' 作为资源根目录")
+else:
+    BASE_COMFYUI_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'comfyui', 'comfyui'))
+    COMFYUI_INPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'input')
+    COMFYUI_OUTPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'output')
+    print(f"服务器模式：使用 '{BASE_COMFYUI_PATH}' 作为 ComfyUI 根目录")
+
 print(f"ComfyUI的输入目录被设置为: {COMFYUI_INPUT_PATH}")
 print(f"ComfyUI的输出目录被设置为: {COMFYUI_OUTPUT_PATH}")
 os.makedirs(COMFYUI_INPUT_PATH, exist_ok=True)
 # 图片目录
-IMAGE_DIR = os.path.join(BASE_COMFYUI_PATH, "output")
+IMAGE_DIR = os.path.join(COMFYUI_OUTPUT_PATH)
 # 视频目录
 VIDEO_DIR = os.path.join(IMAGE_DIR, "video")
 STITCHED_OUTPUT_FOLDER = os.path.join(os.path.dirname(__file__), 'stitched_videos') # 存放拼接结果
@@ -360,6 +376,64 @@ def delete_node(node_id):
 
 @app.route('/api/nodes', methods=['POST'])
 def create_node():
+    # --- 本地模式 ---
+    if APP_MODE == 'local':
+        print(">>> 处于本地模式：模拟生成。")
+        data = request.get_json()
+        tree_id = data.get('tree_id')
+        parent_ids = data.get('parent_ids', [])
+        module_id_from_frontend = data.get('module_id')
+        parameters = data.get('parameters', {})
+
+        try:
+            # 尝试从 output/video 或 output 随机选择一个文件
+            video_output_dir = os.path.join(COMFYUI_OUTPUT_PATH, 'video')
+            main_output_dir = COMFYUI_OUTPUT_PATH
+            available_files = []
+            if os.path.exists(video_output_dir):
+                available_files.extend([(f, 'video') for f in os.listdir(video_output_dir) if f.endswith(('.mp4', '.png', '.jpg'))])
+            if os.path.exists(main_output_dir):
+                 available_files.extend([(f, 'image') for f in os.listdir(main_output_dir) if f.endswith(('.png', '.jpg')) and f not in [f[0] for f in available_files]])
+
+            if not available_files:
+                raise FileNotFoundError("在 local_assets/output 目录中找不到任何示例文件 (.png, .mp4)。请先添加文件。")
+
+            # 随机选择一个文件
+            fake_filename, file_type_hint = random.choice(available_files)
+            print(f"    - 使用本地模拟文件: {fake_filename}")
+
+            # 构建假的 asset URL
+            is_video = fake_filename.endswith('.mp4')
+            subfolder = 'video' if is_video or file_type_hint == 'video' else ''
+            asset_url = f"/view?filename={urllib.parse.quote_plus(fake_filename)}&subfolder={subfolder}&type=output"
+            outputs = {"images": [], "videos": []}
+            if is_video:
+                outputs["videos"].append(asset_url)
+            else:
+                outputs["images"].append(asset_url)
+
+            # 像真实生成一样，将节点添加到数据库
+            new_node_id = database.add_node(
+                tree_id=tree_id,
+                parent_ids=parent_ids,
+                module_id=module_id_from_frontend,
+                parameters=parameters,
+                assets=outputs,
+                status='completed'
+            )
+            if not new_node_id:
+                raise Exception("模拟节点执行成功但保存到数据库失败。")
+
+            # 返回更新后的树
+            updated_tree = database.get_tree_as_json(tree_id)
+            return jsonify(updated_tree), 201
+
+        except Exception as e:
+            print(f"本地模拟生成失败: {e}")
+            return jsonify({"error": str(e)}), 500
+
+
+    print(">>> 处于服务器模式：开始 ComfyUI 生成。")
     """API: 创建一个新节点，即执行一次生成操作。"""
     data = request.get_json()
     print(json.dumps(data, indent=2, ensure_ascii=False))
