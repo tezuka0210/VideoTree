@@ -17,7 +17,7 @@
   },
   "9": {
     "inputs": {
-      "filename_prefix": "ComfyUI_T2I",
+      "filename_prefix": "flux_krea/flux_krea",
       "images": [
         "8",
         0
@@ -41,7 +41,7 @@
   },
   "31": {
     "inputs": {
-      "seed": 379773898845783,
+      "seed": 710548393345187,
       "steps": 20,
       "cfg": 1,
       "sampler_name": "euler",
@@ -52,7 +52,7 @@
         0
       ],
       "positive": [
-        "44",
+        "45",
         0
       ],
       "negative": [
@@ -71,7 +71,7 @@
   },
   "38": {
     "inputs": {
-      "unet_name": "flux1-dev-kontext_fp8_scaled.safetensors",
+      "unet_name": "flux1-krea-dev_fp8_scaled.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -103,7 +103,7 @@
   "42": {
     "inputs": {
       "conditioning": [
-        "43",
+        "45",
         0
       ]
     },
@@ -112,9 +112,9 @@
       "title": "条件零化"
     }
   },
-  "43": {
+  "45": {
     "inputs": {
-      "text": "Night on the Yangtze: a full moon hangs low, its perfect reflection stretching like a silver ribbon across the dark, slow-moving river; distant fishing boats drift with lights dimmed, their shapes reduced to quiet silhouettes; far banks fade into indigo haze, layered mountain ridges rendered in wet ink tones; surface water carries gentle ripples that break the lunar image into shimmering shards of liquid mercury; cool palette of deep indigo, muted cobalt and antique silver, no human presence; 35 mm lens, f/4, long exposure capturing subtle star-trails above, 8 K clarity, tranquil timeless atmosphere",
+      "text": "Inside a quiet Ming palace hall, soft lattice-window light falls on polished stone; a man sits centered, facing the camera, upper body visible above a wide redwood scholar’s 案台 (120 cm × 60 cm) whose front panel completely obscures his lower body; he wears a deep-black silk python robe with expansive sleeves spreading over the tabletop, white-jade belt snug at his waist, while the standard Ming dynasty 乌纱帽 (imperial court cap) rests on his head—its black fine-mesh gauze shaped front-low and back-high, forming a clean, slanted silhouette; at the rear crown, two long oval wing-like boards (帽翅) of the same dark gauze stretch left and right, each about 12 cm long, edges stitched with barely visible dark-gray thread; beneath the cap, a white silk net-band (网巾) wraps his gathered hair, knotting at the nape, every loop and knot catching soft side-light; the gauze’s minute hexagonal weave is crisply resolved, revealing faint intersections back-lit by natural window rays; on the table directly before him rests the existing blue-and-white porcelain vase—absolutely unchanged in pattern, color, or 20 cm diameter; his expression is mild and scholarly, hands relaxed at the table edge; palette of obsidian silk, antique gold trim, cool jade belt, sheer black gauze and crisp ceramic white, 50 mm lens, f/2.8, 8 K clarity, shallow depth, serene court ambiance.",
       "clip": [
         "40",
         0
@@ -123,19 +123,6 @@
     "class_type": "CLIPTextEncode",
     "_meta": {
       "title": "CLIP Text Encode (Positive Prompt)"
-    }
-  },
-  "44": {
-    "inputs": {
-      "guidance": 3.5,
-      "conditioning": [
-        "43",
-        0
-      ]
-    },
-    "class_type": "FluxGuidance",
-    "_meta": {
-      "title": "FluxGuidance"
     }
   }
 }

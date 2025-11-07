@@ -2,6 +2,7 @@
 import * as d3 from 'd3'
 import * as dagre from 'dagre'
 
+
 const defaultLinkColor = '#9ca3af'
 
 const lineGenerator = d3.line()
@@ -119,12 +120,29 @@ export function renderTree(
   g.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 120 })
   g.setDefaultEdgeLabel(() => ({}))
 
+  // --- (核心修复 1) 动态计算高度 ---
+  const BASE_CARD_HEIGHT = 180; // (Header + 140px图片 + Footer)
+  const PROMPT_AREA_HEIGHT = 30; // (为 Prompt 额外增加的高度)
+
   visibleNodes.forEach(node => {
     const isInit = node.module_id === 'Init'
+    const width = isInit ? 60 : 140; // 宽度保持不变
+
+    // 重新计算 hasPrompt 逻辑
+    const promptText = (node.parameters && node.parameters.positive_prompt) ? node.parameters.positive_prompt : null
+    const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
+
+    // 计算动态高度
+    const height = isInit ? 60 : (hasPrompt ? BASE_CARD_HEIGHT + PROMPT_AREA_HEIGHT : BASE_CARD_HEIGHT);
+
+    // 把计算结果存回节点，方便后面使用
+    node.calculatedHeight = height;
+    node.calculatedWidth = width;
+
     g.setNode(node.id, {
       label: node.module_id,
-      width: isInit ? 60 : 140,
-      height: isInit ? 60 : 140,
+      width: width,
+      height: height, // <-- (修复 A) 使用动态高度
     })
   })
   visibleLinks.forEach(l => g.setEdge(l.source, l.target))
@@ -244,26 +262,28 @@ export function renderTree(
     }
 
     // 卡片容器
-    const fo = gEl.append('foreignObject')
-      .attr('width', 140).attr('height', 140)
-      .attr('x', -70).attr('y', -70)
+     const fo = gEl.append('foreignObject')
+      .attr('width', d.calculatedWidth) // <-- (修复 B)
+      .attr('height', d.calculatedHeight) // <-- (修复 B)
+      .attr('x', -d.calculatedWidth / 2) // <-- (修复 C)
+      .attr('y', -d.calculatedHeight / 2) // <-- (修复 C)
       .style('overflow', 'visible')
 
     const card = fo.append('xhtml:div')
       .attr('class', 'node-card')
       .style('width', '100%')
       .style('height', '100%')
-      .style('display', 'flex').style('flexDirection', 'column')
-      .style('borderWidth', '2px')
+      .style('display', 'flex').style('flex-direction', 'column')
+      .style('border-width', '2px')
       .style('position', 'relative')
       .style('cursor', 'pointer')
-      .style('backgroundColor', '#ffffff')
+      .style('background-color', '#ffffff')
 
     const border =
       d.status === 'running' ? '#3b82f6' :
       d.status === 'success' ? '#22c55e' :
       d.status === 'error'   ? '#ef4444' : '#d1d5db'
-    card.style('borderColor', border)
+    card.style('border-color', border)
     card.style('box-shadow', selectedIds.includes(d.id) ? '0 0 0 3px #3b82f6' : 'none')
 
     // 选中逻辑（忽略按钮/媒体/Prompt）
@@ -289,25 +309,26 @@ export function renderTree(
     // Header
     const header = card.append('xhtml:div')
       .style('display', 'flex')
-      .style('justifyContent', 'space-between')
-      .style('alignItems', 'center')
+      .style('justify-content', 'space-between')
+      .style('align-items', 'center')
       .style('padding', '4px')
-      .style('borderBottom', '1px solid #e5e7eb')
-      .style('flexShrink', '0')
+      .style('border-bottom', '1px solid #e5e7eb')
+      .style('flex-shrink', '0')
 
     header.append('xhtml:h3')
-      .style('fontSize', '8px').style('fontWeight', '700').style('color', '#1f2937')
-      .style('overflow', 'hidden').style('textOverflow', 'ellipsis').style('whiteSpace', 'nowrap')
+      .style('font-size', '8px').style('font-weight', '700').style('color', '#1f2937')
+      .style('overflow', 'hidden').style('text-overflow', 'ellipsis').style('white-space', 'nowrap')
+      .style('min-width','0')
       .text(d.module_id || '(节点)')
 
     if (d.module_id !== 'Init' && d.module_id !== 'ROOT') {
       header.append('xhtml:button')
-        .style('backgroundColor', '#fff')
+        .style('background-color', '#fff')
         .style('color', '#E4080A')
-        .style('borderRadius', '50%')
+        .style('border-radius', '50%')
         .style('border', 'none')
         .style('width', '16px').style('height', '16px')
-        .style('fontSize', '16px').style('lineHeight', '16px').style('textAlign', 'center')
+        .style('font-size', '16px').style('line-height', '16px').style('text-align', 'center')
         .style('cursor', 'pointer').style('flexShrink', '0')
         .html('&#xD7;')
         .on('mousedown', (ev) => ev.stopPropagation())
@@ -325,16 +346,18 @@ export function renderTree(
 
     // Content
     const content = card.append('xhtml:div')
-      .style('flexGrow', hasPrompt ? '0' : '1')
-      .style('flexShrink', hasPrompt ? '0' : '1')
-      .style('height', hasPrompt ? '60px' : 'auto')
-      .style('minHeight', '0')
+      // --- (核心修复 3) ---
+      .style('flex-grow', '0') // 图片区永远不拉伸
+      .style('flex-shrink', '0') // 图片区永远不收缩
+      .style('height', '100px') // (关键) 固定图片区高度为 140px
+      // --- (修复结束) ---
+      .style('min-height', '0')
       .style('position', 'relative')
 
     if (hasMedia) {
       if (isVideo) {
         const v = content.append('xhtml:video')
-          .style('width', '100%').style('height', '100%').style('objectFit', 'cover').style('display', 'block')
+          .style('width', '100%').style('height', '100%').style('object-fit', 'contain').style('display', 'block')
           .attr('muted', true).attr('playsinline', true).attr('preload', 'metadata')
           .on('mousedown', (ev) => ev.stopPropagation())
           .on('click', (ev) => { ev.stopPropagation(); emit('open-preview', mediaUrl, d.media.type) })
@@ -342,7 +365,7 @@ export function renderTree(
         el.autoplay = true; el.loop = true; el.muted = true; el.playsInline = true; el.src = mediaUrl
       } else {
         content.append('xhtml:img')
-          .style('width', '100%').style('height', '100%').style('objectFit', 'cover').style('display', 'block')
+          .style('width', '100%').style('height', '100%').style('object-fit', 'contain').style('display', 'block')
           .attr('src', mediaUrl).attr('alt', d.module_id || 'thumb')
           .on('mousedown', (ev) => ev.stopPropagation())
           .on('click', (ev) => { ev.stopPropagation(); emit('open-preview', mediaUrl, d.media.type) })
@@ -350,27 +373,26 @@ export function renderTree(
     } else {
       content.append('xhtml:div')
         .style('width', '100%').style('height', '100%')
-        .style('display', 'flex').style('alignItems', 'center').style('justifyContent', 'center')
-        .style('fontSize', '12px').style('color', '#6b7280').text('无缩略图')
+        .style('display', 'flex').style('align-items', 'center').style('justify-content', 'center')
+        .style('font-size', '12px').style('color', '#6b7280').text('无缩略图')
     }
 
     // 右上角三色按钮
     const dots = content.append('xhtml:div')
       .attr('class', 'dots-container')
       .style('position', 'absolute')
-      .style('display', 'flex').style('flexDirection', 'column')
-      .style('alignItems', 'center').style('justifyContent', 'center')
+      .style('display', 'flex').style('flex-direction', 'column')
+      .style('align-items', 'center').style('justify-content', 'center')
       .style('opacity', '0').style('transition', 'opacity 0.15s ease-in-out')
-      .style('zIndex', '10').style('top', '4px').style('right', '4px')
-
+      .style('z-index', '10').style('top', '4px').style('right', '4px')
     ;(['red', 'yellow', 'green']).forEach((key, idx) => {
       const info = workflowTypes[key]
       dots.append('xhtml:button')
-        .style('backgroundColor', info.color)
-        .style('width', '16px').style('height', '16px').style('borderRadius', '50%')
+        .style('background-color', info.color)
+        .style('width', '16px').style('height', '16px').style('border-radius', '50%')
         .style('border', 'none').style('padding', '0').style('cursor', 'pointer')
         .style('transition', 'transform 0.15s ease-in-out')
-        .style('marginTop', idx > 0 ? '4px' : '0')
+        .style('margin-top', idx > 0 ? '4px' : '0')
         .attr('title', `Start ${info.type} workflow`)
         .on('mouseenter', function () { d3.select(this).style('transform', 'scale(1.25)') })
         .on('mouseleave', function () { d3.select(this).style('transform', 'scale(1)') })
@@ -382,18 +404,18 @@ export function renderTree(
     if (hasPrompt) {
       const promptDiv = card.append('xhtml:div')
         .attr('class', 'prompt-div-inner')
-        .style('flexGrow', '1').style('flexShrink', '1').style('minHeight', '0')
-        .style('overflowY', 'auto').style('padding', '4px')
-        .style('borderTop', '1px solid #e5e7eb')
-        .style('fontSize', '6px').style('color', '#374151')
-        .style('whiteSpace', 'pre-wrap').style('wordBreak', 'break-all')
+        .style('flex-grow', '1').style('flex-shrink', '1').style('min-height', '0')
+        .style('overflow-y', 'auto').style('padding', '4px')
+        .style('border-top', '1px solid #e5e7eb')
+        .style('font-size', '10px').style('color', '#374151')
+        .style('white-space', 'pre-wrap').style('word-break', 'break-all')
         .on('mousedown', (ev) => ev.stopPropagation())
       promptDiv.append('xhtml:div').text(promptText)
     }
 
     // Footer：▶
     const footer = card.append('xhtml:div')
-      .style('display', 'flex').style('justifyContent', 'flex-end')
+      .style('display', 'flex').style('justify-content', 'flex-end')
       .style('padding', '2px')
 
     if (canAddToStitch) {
@@ -402,9 +424,9 @@ export function renderTree(
         .html('&#9658;')
         .style('opacity', '0').style('transition', 'opacity 0.15s ease-in-out')
         .style('width', '20px').style('height', '20px')
-        .style('display', 'flex').style('alignItems', 'center').style('justifyContent', 'center')
-        .style('color', '#3b82f6').style('fontSize', '1.125rem')
-        .style('border', 'none').style('backgroundColor', 'transparent').style('padding', '0')
+        .style('display', 'flex').style('align-items', 'center').style('justify-content', 'center')
+        .style('color', '#3b82f6').style('font-size', '1.125rem')
+        .style('border', 'none').style('background-color', 'transparent').style('padding', '0')
         .style('cursor', 'pointer')
         .on('mousedown', (ev) => ev.stopPropagation())
         .on('click', (ev) => { ev.stopPropagation(); emit('add-clip', d, isVideo ? 'video' : 'image') })
@@ -421,17 +443,17 @@ export function renderTree(
       card.append('xhtml:button')
         .attr('class', 'collapse-btn')
         .style('position', 'absolute').style('bottom', '8px').style('left', '0')
-        .style('backgroundColor', '#ffffff')
+        .style('background-color', '#ffffff')
         .style('color', d._collapsed ? '#E4080A' : '#9ca3af')
-        .style('borderRadius', '50%')
+        .style('border-radius', '50%')
         .style('width', '16px').style('height', '16px').style('fontSize', '16px')
         .style('lineHeight', '16px').style('textAlign', 'center').style('fontWeight', '700')
         .style('zIndex', '10').style('border', 'none').style('cursor', 'pointer')
         .style('transition', 'background-color 0.15s ease-in-out')
         .style('transform', 'translate(-25%, 25%)')
         .text(d._collapsed ? '+' : '-')
-        .on('mouseenter', function () { d3.select(this).style('backgroundColor', '#ffffff') })
-        .on('mouseleave', function () { d3.select(this).style('backgroundColor', '#ffffff') })
+        .on('mouseenter', function () { d3.select(this).style('background-color', '#ffffff') })
+        .on('mouseleave', function () { d3.select(this).style('background-color', '#ffffff') })
         .on('mousedown', (ev) => ev.stopPropagation())
         .on('click', (ev) => { ev.stopPropagation(); emit('toggle-collapse', d.id) })
     }

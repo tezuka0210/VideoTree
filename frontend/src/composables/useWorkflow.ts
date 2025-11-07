@@ -145,18 +145,6 @@ export function useWorkflow() {
   function parseAssetsField(assetsObject: AssetDetails | null): AssetDetails | null {
     if (!assetsObject) return null
     return assetsObject;
-    // try {
-    //   if (typeof assetsField === 'string') {
-    //     if (assetsField.trim() === '' || assetsField.trim() === '{}') return null
-    //     return JSON.parse(assetsField)
-    //   } else if (typeof assetsField === 'object') {
-    //     return assetsField // 已经是对象
-    //   }
-    // } catch (err) {
-    //   console.warn('解析 assets 失败:', err, assetsField)
-    //   return null
-    // }
-    // return null
   }
 
   /** 从解析后的 assets 对象中获取第一个媒体文件 */

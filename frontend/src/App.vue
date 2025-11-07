@@ -17,9 +17,10 @@
         @toggle-collapse="toggleNodeCollapse"
       />
       <StitchingPanel
-        v-model:clips="stitchingClips"
+        :clips="stitchingClips"
         :is-stitching="isStitching"
         :stitch-result-url="stitchResultUrl"
+        @update:clips="handleClipsUpdate"
         @remove-clip="removeClipFromStitch"
         @stitch="onStitchRequest"
       />
@@ -48,7 +49,7 @@
 import { onMounted, ref, watch } from 'vue'
 
 // --- 2. 导入我们的 Composable (状态和逻辑) ---
-import { useWorkflow, workflowTypes, type AppNode } from '@/composables/useWorkflow'
+import { useWorkflow, workflowTypes, type AppNode, type StitchingClip } from '@/composables/useWorkflow'
 
 // --- 3. 导入所有子组件 ---
 import WorkflowTree from './components/WorkflowTree.vue'
@@ -84,7 +85,12 @@ const {
   toggleNodeCollapse,
 } = useWorkflow()
 
+function handleClipsUpdate(newList: StitchingClip[]) {
+  // 我们不能执行: stitchingClips = newList (这是错的)
 
+  // 我们必须“就地修改” (mutate) 原始的 reactive 数组
+  stitchingClips.splice(0, stitchingClips.length, ...newList);
+}
 
 
 // 这个 watch 会告诉我们 App.vue 的“父状态”是否真的更新了
