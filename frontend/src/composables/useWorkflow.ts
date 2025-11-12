@@ -1,5 +1,6 @@
 // /frontend/src/composables/useWorkflow.ts
 
+import { color } from 'd3'
 import { ref, reactive } from 'vue'
 
 // --- 1. 常量定义 ---
@@ -13,7 +14,8 @@ const COMFYUI_URL = 'http://223.193.6.178:8188'
 export const workflowTypes = {
   red: { type: 'preprocess', defaultModuleId: 'ImageCanny', color: '#ef4444' }, // Red-500
   yellow: { type: 'image', defaultModuleId: 'TextGenerateImage', color: '#f59e0b' }, // Amber-500
-  green: { type: 'video', defaultModuleId: 'TextGenerateVideo', color: '#10b981' } // Emerald-500
+  green: { type: 'video', defaultModuleId: 'TextGenerateVideo', color: '#10b981' }, // Emerald-500
+  audio: {type:'audio', defaultModuleId:'TextToAudio',color:'#3b82f6'}
 };
 const defaultLinkColor = '#9ca3af'; // Gray-400
 
@@ -54,6 +56,7 @@ interface DbNode {
 interface AssetDetails {
   images?: string[];
   videos?: string[];
+  audio?: string[];
   // ... 其他可能的资产
 }
 
@@ -61,7 +64,7 @@ interface AssetDetails {
 interface AssetMedia {
   rawPath: string; // 相对路径 (用于 API)
   url: string;     // 完整 URL (用于 <img> <video>)
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
 }
 
 // 经过前端处理后，用于 D3 渲染和 App 内部使用的 Node 结构
@@ -105,7 +108,7 @@ export type StitchingClip = ImageClip | VideoClip;
 // 预览弹窗的状态
 interface PreviewMedia {
   url: string;
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
 }
 
 
@@ -148,15 +151,20 @@ export function useWorkflow() {
   }
 
   /** 从解析后的 assets 对象中获取第一个媒体文件 */
-  function firstMediaFromAssets(assets: AssetDetails | null): { path: string; type: 'image' | 'video' } | null {
+  function firstMediaFromAssets(assets: AssetDetails | null): { path: string; type: 'image' | 'video' |'audio'} | null {
     if (!assets) return null;
     // (v91 修复)
     // 检查 .mp4，因为后端 可能把视频放进 images
     const imgs = assets.images || [];
     const vids = assets.videos || [];
+    const auds = assets.audio || [];
     // (v91) 优先检查视频
     if (Array.isArray(vids) && vids.length > 0) {
       if (vids[0]) return { path: vids[0], type: 'video' };
+    }
+    // 检查音频
+    if (Array.isArray(auds) && auds.length > 0) {
+      if (auds[0]) return { path: auds[0], type: 'audio' };
     }
     // (v91) 其次检查图片
     if (Array.isArray(imgs) && imgs.length > 0) {
@@ -166,6 +174,7 @@ export function useWorkflow() {
         return { path: imgs[0], type: isVideo ? 'video' : 'image' };
       }
     }
+    
     return null;
   }
   
@@ -209,6 +218,9 @@ export function useWorkflow() {
 
     // 将 DbNode 转换为 AppNode
     const processedNodes: AppNode[] = nodes.map(n => {
+       if (n.module_id === 'TextToAudio') { // 只打印音频节点，保持控制台干净
+        console.log('--- 正在检查音频节点 ---', n.assets);
+      }
       const parsedAssets = parseAssetsField(n.assets)
       const firstMedia = firstMediaFromAssets(parsedAssets)
       const media = firstMedia

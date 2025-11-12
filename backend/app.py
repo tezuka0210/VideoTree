@@ -115,7 +115,10 @@ def get_comfyui_outputs(prompt_id: str) -> dict:
     history_response = requests.get(f"http://{COMFYUI_SERVER_ADDRESS}/history/{prompt_id}")
     history_response.raise_for_status()
     history = history_response.json()
-    
+    # --- 【请在这里添加关键调试代码】---
+    print("--- ComfyUI History Output (DEBUG) ---")
+    print(json.dumps(history, indent=2, ensure_ascii=False))
+    print("---------------------------------------")
     outputs = {}
     # 遍历历史记录中的输出
     for node_id, node_output in history[prompt_id]['outputs'].items():
@@ -127,7 +130,16 @@ def get_comfyui_outputs(prompt_id: str) -> dict:
                 image_url = f"/view?filename={urllib.parse.quote_plus(image['filename'])}&subfolder={urllib.parse.quote_plus(image['subfolder'])}&type={image['type']}&_cache_buster={cache_buster}"
                 image_list.append(image_url)
             outputs['images'] = image_list
-        # 你可以在这里添加对视频等其他输出类型的处理
+        # 在这里添加对视频等其他输出类型的处理
+        if 'audio' in node_output:
+            audio_list = []
+            for audio_file in node_output['audio']:
+                cache_buster = int(time.time())
+                # 构建 URL，与图片/视频相同
+                audio_url = f"/view?filename={urllib.parse.quote_plus(audio_file['filename'])}&subfolder={urllib.parse.quote_plus(audio_file['subfolder'])}&type={audio_file['type']}&_cache_buster={cache_buster}"
+                audio_list.append(audio_url)
+            outputs['audio'] = audio_list
+
         if 'videos' in node_output: 
             video_list = []
             for video in node_output['videos']:
@@ -153,8 +165,8 @@ def _get_image_info_from_parent(parent_node_id):
         raise ValueError(f"指定的父节点 {parent_node_id} 不存在。")
 
     assets = source_node.get('assets', {})
-    # 优先使用图片，Upload 节点通常只有图片
-    media_list = assets.get('images', []) or assets.get('videos', [])
+    
+    media_list = assets.get('images', []) or assets.get('videos', []) or assets.get('audio',[])
     if not media_list:
         raise ValueError(f"父节点 {parent_node_id} 没有可用的媒体资源。")
 
@@ -240,7 +252,7 @@ def view_file():
         mime_type = "application/octet-stream"
 
     # --- (v89 核心修复) 视频流逻辑 ---
-    if mime_type.startswith("video/"):
+    if mime_type.startswith("video/") or mime_type.startswith("audio/"):
         try:
             file_size = os.path.getsize(file_path)
             range_header = request.headers.get("Range", None)
@@ -387,29 +399,47 @@ def create_node():
 
         try:
             # 尝试从 output/video 或 output 随机选择一个文件
-            video_output_dir = os.path.join(COMFYUI_OUTPUT_PATH, 'video')
-            main_output_dir = COMFYUI_OUTPUT_PATH
-            available_files = []
-            if os.path.exists(video_output_dir):
-                available_files.extend([(f, 'video') for f in os.listdir(video_output_dir) if f.endswith(('.mp4', '.png', '.jpg'))])
+            main_output_dir = COMFYUI_OUTPUT_PATH # /local_assets/output
+            video_output_dir = os.path.join(COMFYUI_OUTPUT_PATH, 'video') # /local_assets/output/video
+            audio_output_dir = os.path.join(COMFYUI_OUTPUT_PATH, 'audio') # /local_assets/output/audio
+
+            available_files = [] # (文件名, 子文件夹)
+
+            # 1. 查找图片 (在 /output)
             if os.path.exists(main_output_dir):
-                 available_files.extend([(f, 'image') for f in os.listdir(main_output_dir) if f.endswith(('.png', '.jpg')) and f not in [f[0] for f in available_files]])
+                available_files.extend([
+                    (f, '') for f in os.listdir(main_output_dir)
+                    if f.endswith(('.png', '.jpg', '.jpeg'))
+                ])
+            # 2. 查找视频 (在 /output/video)
+            if os.path.exists(video_output_dir):
+                available_files.extend([
+                    (f, 'video') for f in os.listdir(video_output_dir)
+                    if f.endswith(('.mp4', '.mov', '.avi'))
+                ])
+            # 3. 查找音频 (在 /output/audio)
+            if os.path.exists(audio_output_dir):
+                available_files.extend([
+                    (f, 'audio') for f in os.listdir(audio_output_dir)
+                    if f.endswith(('.mp3', '.wav', '.flac'))
+                ])
 
             if not available_files:
-                raise FileNotFoundError("在 local_assets/output 目录中找不到任何示例文件 (.png, .mp4)。请先添加文件。")
+                raise FileNotFoundError("在 local_assets/output 目录中找不到任何示例文件 (.png, .mp4, ,mp3)。请先添加文件。")
 
             # 随机选择一个文件
-            fake_filename, file_type_hint = random.choice(available_files)
-            print(f"    - 使用本地模拟文件: {fake_filename}")
+            fake_filename, subfolder = random.choice(available_files)
+            print(f"    - 使用本地模拟文件: {fake_filename} (来自 subfolder: '{subfolder}')")
 
             # 构建假的 asset URL
-            is_video = fake_filename.endswith('.mp4')
-            subfolder = 'video' if is_video or file_type_hint == 'video' else ''
-            asset_url = f"/view?filename={urllib.parse.quote_plus(fake_filename)}&subfolder={subfolder}&type=output"
-            outputs = {"images": [], "videos": []}
-            if is_video:
+            asset_url = f"/view?filename={urllib.parse.quote_plus(fake_filename)}&subfolder={urllib.parse.quote_plus(subfolder)}&type=output"
+            outputs = {"images": [], "videos": [], "audio": []}
+
+            if subfolder == 'video':
                 outputs["videos"].append(asset_url)
-            else:
+            elif subfolder == 'audio':
+                outputs["audio"].append(asset_url)
+            else: 
                 outputs["images"].append(asset_url)
 
             # 像真实生成一样，将节点添加到数据库
@@ -452,6 +482,23 @@ def create_node():
 
     try:
         # --- 根据输入情况决定加载哪个工作流和处理输入 ---
+        if final_module_id == 'AddText':
+            print(">>> 检测到 AddText 模块，仅保存文本节点到数据库。")
+            # "AddText" 模块没有 ComfyUI 操作，它只保存节点
+            new_node_id = database.add_node(
+                tree_id=tree_id,
+                parent_ids=parent_ids,
+                module_id=final_module_id,
+                parameters=parameters,
+                assets={}, # 没有媒体资源
+                status='completed'
+            )
+            if not new_node_id:
+                raise Exception("保存 AddText 节点到数据库失败。")
+
+            # 返回更新后的树
+            updated_tree = database.get_tree_as_json(tree_id)
+            return jsonify(updated_tree), 201
         
         # 情况3: Mask 输入 (最高优先级判断)
         if 'mask_filename' in parameters:
@@ -506,6 +553,21 @@ def create_node():
             final_module_id = module_id_from_frontend
             workflow = load_workflow(final_module_id)
             if workflow is None: raise ValueError(f"未找到工作流 '{final_module_id}.json'")
+            # 处理文字节点输入
+            if final_module_id == 'TextToAudio' and (not parameters.get('text')):
+                try:
+                    # 尝试获取父节点
+                    parent_node = database.get_node(parent_ids[0])
+                    # 检查父节点是否是 'AddText' 节点
+                    if parent_node and parent_node.get('module_id') == 'AddText' and parent_node.get('parameters'):
+                        # 尝试获取父节点的文本 (positive_prompt)
+                        parent_text = parent_node['parameters'].get('positive_prompt')
+                        if parent_text:
+                            # 自动将父节点的文本填充到当前节点的 'text' 参数中
+                            parameters['text'] = parent_text
+                            print(f"    - 'text' 参数为空，已从父节点 'AddText' ({parent_ids[0]}) 继承文本。")
+                except Exception as e:
+                    print(f"    - 警告：尝试从父节点继承文本时出错: {e}")
             
             # 处理单个父节点的图像输入 (仅当模块需要时才处理)
             if final_module_id in ['ImageGenerateImage_Basic', 'ImageGenerateImage_Canny','ImageGenerateVideo','CameraControl','ImageCanny','ImageHDRestoration','ImageMerging','PartialRepainting','Put_It_Here','RemoveBackground']: # 根据你的模块ID调整
@@ -628,8 +690,15 @@ def create_node():
                 workflow[stitch_node_id]["inputs"]["alpha_matting_background_threshold"] = parameters['background_threshold']
             if 'erode_size' in parameters:
                 workflow[stitch_node_id]["inputs"]["alpha_matting_erode_size"] = parameters['erode_size']
+        # VOICE
+        voice_node_id = find_node_id_by_title(workflow,"VibeVoice Single Speaker")
+        if voice_node_id:
+            if 'text' in parameters:
+                workflow[voice_node_id]["inputs"]["text"] = parameters['text']
+            if 'speed' in parameters:
+                workflow[voice_node_id]["inputs"]["voice_speed_factor"] = ['speed']
 
-    # try:
+    
         # --- 调用ComfyUI并等待结果 ---
         queued_prompt = queue_comfyui_prompt(workflow)
         prompt_id = queued_prompt['prompt_id']

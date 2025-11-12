@@ -40,7 +40,7 @@ import { onMounted, onUnmounted } from 'vue'
 // App.vue 将通过 :url="..." 和 :type="..." 把数据传进来
 const props = defineProps<{
   url: string;
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'audio';
 }>()
 
 // (2) 定义组件可以触发的事件

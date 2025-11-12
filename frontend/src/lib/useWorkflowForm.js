@@ -2,6 +2,7 @@ import { ref, reactive, computed, watch } from 'vue'
 
 /* 全部模块 */
 const allModules = [
+  { id: 'AddText',name:'Text',type:'util'},
   { id: 'ImageCanny', name: 'ImageCanny', type: 'preprocess' },
   { id: 'RemoveBackground', name: 'RemoveBackground', type: 'preprocess' },
   { id: 'ImageMerging', name: 'ImageMerging', type: 'preprocess' },
@@ -14,11 +15,19 @@ const allModules = [
   { id: 'ImageGenerateVideo', name: 'ImageToVideo', type: 'video' },
   { id: 'CameraControl', name: 'CameraControl', type: 'video' },
   { id: 'FrameInterpolation', name: 'FrameInterpolation', type: 'video' },
-  { id: 'FLFrameToVideo', name: 'FisrtAndLastFrameControl', type: 'video' }
+  { id: 'FLFrameToVideo', name: 'FisrtAndLastFrameControl', type: 'video' },
+  { id: 'TextToAudio',name:'TextToAudio',type:'audio'}
 ]
 
 /* 各模块参数定义 */
 const workflowParameters = {
+  AddText: [
+    { id: 'text', label: 'Text', type: 'textarea', defaultValue: '' },
+  ],
+  TextToAudio: [
+    { id: 'text', label: 'Audio Prompt', type: 'textarea', defaultValue: '', placeholder: 'Text to be converted to audio...' },
+    { id: 'voice_speed_factor', label: 'Speed', type: 'number', defaultValue: 1.0, step:0.01, min:0.8, max:1.2  }
+  ],
   ImageCanny: [
     { id: 'low_threshold', label: 'Low Threshold', type: 'number', defaultValue: 0.1, step: 0.01, min: 0, max: 1 },
     { id: 'high_threshold', label: 'High Threshold', type: 'number', defaultValue: 0.8, step: 0.01, min: 0, max: 1 }
