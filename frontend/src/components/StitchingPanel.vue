@@ -1,17 +1,19 @@
 <template>
   <div class="bg-white rounded shadow p-4">
-    <h2 class="text-l font-semibold mb-4 text-gray-700">拼接序列</h2>
+    <!-- <h2 class="text-l font-semibold mb-4 text-gray-700">拼接序列</h2> -->
 
     <div
       id="stitching-panel-wrapper"
-      class="bg-gray-100 border border-dashed border-gray-300 min-h-[80px]"
+      class="bg-gray-100 border border-dashed border-gray-300 min-h-[80px] overflow-x-auto overflow-y-hidden"
       @wheel.prevent="handleZoom"
     >
-      <canvas
+      <!-- 时间轴：宽度由 drawTimeline 动态设定 -->
+      <div
         id="timeline-ruler"
-        style="width: 100%; height: 30px; background: #fafafa"
-      ></canvas>
-
+        class="border-b border-gray-200"
+        style="background:#fafafa;"
+      ></div>
+      
       <div
         id="stitching-panel"
         class="bg-gray-100 p-4 rounded min-h-[80px]"
@@ -123,29 +125,26 @@ import { onMounted, watch } from 'vue'
 import { useStitching } from '@/lib/useStitching.js'
 
 const props = defineProps({
-  clips:            { type: Array,  required: true }, // (视频轨 v-model)
-  // --- 【新增】---
-  audioClips:       { type: Array,  required: true }, // (音轨 v-model)
-  // --- 【新增】结束 ---
+  clips:            { type: Array,  required: true },
+  audioClips:       { type: Array,  required: true },
   isStitching:      { type: Boolean, default: false },
   stitchResultUrl:  { type: [String, null] }
 })
 
 const emit = defineEmits([
-  'update:clips',       // (视频轨 v-model)
-  'update:audioClips',  // (音轨 v-model)
+  'update:clips',
+  'update:audioClips',
   'stitch',
-  'remove-clip',        // (删除视频轨)
-  'remove-audio-clip'   // (删除音轨)
+  'remove-clip',
+  'remove-audio-clip'
 ])
 
-/* 全部逻辑下沉到 useStitching */
 const {
   pixelsPerSecond,
-  videoClipWidths,   // <-- 重命名
-  audioClipWidths,   // <-- 新增
-  draggedClip,       // <-- 重命名
-  draggedOver,       // <-- 重命名
+  videoClipWidths,
+  audioClipWidths,
+  draggedClip,
+  draggedOver,
   isDraggingOverContainer,
   handleZoom,
   handleDragStart,
@@ -156,18 +155,28 @@ const {
   handleDragOverContainer,
   handleDragLeaveContainer,
   handleDropContainer,
-  drawTimeline
-} = useStitching(props, emit) // <-- 将包含 audioClips 的 props 传递下去
+  drawTimeline,      // ✅ 从 composable 拿到
+} = useStitching(props, emit)
 
-/* 挂载时画一次标尺 */
-onMounted(() => drawTimeline(pixelsPerSecond.value))
+/* 关键：组件控制时间轴重绘逻辑 */
 
-/* 缩放变化时重绘 */
-watch(pixelsPerSecond, drawTimeline)
+// 首次挂载时画一次
+onMounted(() => {
+  drawTimeline()
+})
+
+// 缩放 或 clips/audioClips 改变时重绘
+watch(
+  () => [pixelsPerSecond.value, props.clips, props.audioClips],
+  () => {
+    drawTimeline()
+  },
+  { deep: true }
+)
 
 /* 快捷方法 */
-const removeVideo = index => emit('remove-clip', index) // <-- 重命名
-const removeAudio = index => emit('remove-audio-clip', index) // <-- 新增
+const removeVideo = index => emit('remove-clip', index)
+const removeAudio = index => emit('remove-audio-clip', index)
 const stitch = () => emit('stitch')
 </script>
 
