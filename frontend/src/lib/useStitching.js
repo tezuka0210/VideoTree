@@ -1,18 +1,21 @@
 // src/composables/useStitching.js
 import { ref, computed, nextTick } from 'vue'
-// d3 其实不再强依赖了，但如果你后面想用 scale 可以保留这一行
-// import * as d3 from 'd3'
 
 export function useStitching(props, emit) {
   /* ---------------- 1. 基础状态 ---------------- */
-  // 唯一真理：所有“秒 -> 像素”都用这个系数
+  // 所有“秒 -> 像素”都用这个系数
   const pixelsPerSecond = ref(40)
 
   const draggedClip = ref(null)              // { track: 'video' | 'audio', index }
   const draggedOver = ref(null)              // { track: 'video' | 'audio', index }
   const isDraggingOverContainer = ref(null)  // 'video' | 'audio' | null
 
-  /* ---------------- 2. clip 宽度（直接用秒*pps） ---------------- */
+  // 时间轴选区
+  const isSelecting = ref(false)
+  const selectionStartPx = ref(null)
+  const selectionEndPx = ref(null)
+
+  /* ---------------- 2. clip 宽度（秒 * pps） ---------------- */
 
   const videoClipWidths = computed(() =>
     (props.clips || []).map(c =>
@@ -26,7 +29,46 @@ export function useStitching(props, emit) {
     )
   )
 
-  /* ---------------- 3. 时间轴绘制：0.01 / 0.1 / 1s 三层刻度 ---------------- */
+  /* ---------------- 工具函数 ---------------- */
+
+  // 统一：秒显示 1 位小数；>= 60s 用 mm:ss
+  function formatTime(seconds) {
+    const s = Math.max(0, Number(seconds) || 0)
+    if (s < 60) {
+      return s.toFixed(1) + 's'
+    }
+    const m = Math.floor(s / 60)
+    const remain = s - m * 60
+    const mm = String(m).padStart(2, '0')
+    const ss = remain.toFixed(0).padStart(2, '0')
+    return `${mm}:${ss}`
+  }
+
+  // 根据当前缩放自动选择“主刻度”步长，保证刻度既不太密也不太稀
+  function pickMajorStep(pps) {
+    // 目标：相邻主刻度大概 80 像素左右
+    const targetPx = 80
+    const candidates = [
+      0.1, 0.2, 0.5,
+      1, 2, 5,
+      10, 20, 30,
+      60, 120, 300
+    ] // 单位：秒
+
+    let best = candidates[0]
+    let bestDiff = Infinity
+    for (const step of candidates) {
+      const px = step * pps
+      const diff = Math.abs(px - targetPx)
+      if (diff < bestDiff) {
+        bestDiff = diff
+        best = step
+      }
+    }
+    return best
+  }
+
+  /* ---------------- 3. 时间轴绘制（视窗内刻度） ---------------- */
   function drawTimeline() {
     nextTick(() => {
       const container = document.getElementById('timeline-ruler')
@@ -34,38 +76,66 @@ export function useStitching(props, emit) {
 
       const wrapper = container.parentElement
       const wrapperWidth = wrapper?.getBoundingClientRect().width || 300
+      const scrollLeft = wrapper?.scrollLeft || 0
 
       const clips = props.clips || []
       const audio = props.audioClips || []
 
-      // 计算真实时长
+      // 真实总时长
       const totalVideo = clips.reduce((s, c) => s + (c.duration || 0), 0)
       const totalAudio = audio.reduce((s, c) => s + (c.duration || 0), 0)
-      const totalDuration = Math.max(totalVideo, totalAudio)  // 重要：这里没有最小值1
+      const totalDuration = Math.max(totalVideo, totalAudio, 0)
 
-      // 核心：宽度至少等于父容器宽度
-      const timelineWidth =
-        Math.max(
-          wrapperWidth,
-          (totalDuration || 0) * pixelsPerSecond.value
-        )
+      // 即使没有 clip，也给一个“虚拟可视时长”，防止太短
+      const minVisibleDuration = wrapperWidth / pixelsPerSecond.value || 5
+      const effectiveDuration = Math.max(totalDuration, minVisibleDuration)
 
+      // 时间轴总宽度 = max(父容器宽度, 总时长 * pps)
+      const timelineWidth = Math.max(
+        wrapperWidth,
+        effectiveDuration * pixelsPerSecond.value
+      )
       const height = 30
 
-      // 更新容器尺寸
+      // 清空 & 基础样式
       container.innerHTML = ''
       container.style.width = timelineWidth + 'px'
       container.style.height = height + 'px'
       container.style.position = 'relative'
       container.style.background = '#fafafa'
-      container.style.overflow = 'hidden'
+      // 关键：允许 0.0s 文字向左“溢出”而不被裁掉
+      container.style.overflow = 'visible'
 
-      // ===== 下面开始画刻度（后面你需要的 0.01 / 0.1 / 1s） =====
-      const SMALL_STEP = 0.01
+      // 让视频轨/音频轨跟时间轴宽度一致
+      const videoPanel = document.getElementById('stitching-panel')
+      const audioPanel = document.getElementById('audio-stitching-panel')
+      if (videoPanel) videoPanel.style.width = timelineWidth + 'px'
+      if (audioPanel) audioPanel.style.width = timelineWidth + 'px'
+
+      // 当前视窗对应的时间范围（只画这部分）
+      const visibleStartPx = scrollLeft
+      const visibleEndPx = scrollLeft + wrapperWidth
+      const visibleStartTime = visibleStartPx / pixelsPerSecond.value
+      const visibleEndTime = visibleEndPx / pixelsPerSecond.value
+
+      // 稍微往两边扩一点，避免边缘突兀
+      const padTime = (visibleEndTime - visibleStartTime) * 0.1
+      const tStart = Math.max(0, visibleStartTime - padTime)
+      const tEnd = Math.min(effectiveDuration, visibleEndTime + padTime)
+
+      // 动态选择主刻度 / 次刻度
+      const majorStep = pickMajorStep(pixelsPerSecond.value) // 主刻度间隔
+      const minorCount = 4                                   // 主刻度之间插 4 个次刻度
+      const minorStep = majorStep / (minorCount + 1)
+
+      // 是否绘制 0.02s 的“次次刻度”：
+      // 1) 主刻度不大于 1s（已经比较细了）
+      // 2) 0.02s 至少有 4px 宽度，避免太密
+      const subMinorStep = 0.02
+      const shouldDrawSubMinor =
+        majorStep <= 1 && (pixelsPerSecond.value * subMinorStep >= 4)
+
       const EPS = 1e-6
-
-      const maxT = Math.max(totalDuration, wrapperWidth / pixelsPerSecond.value)
-      const maxIndex = Math.round(maxT / SMALL_STEP)
 
       // baseline
       const baseline = document.createElement('div')
@@ -77,66 +147,162 @@ export function useStitching(props, emit) {
       baseline.style.background = '#e5e7eb'
       container.appendChild(baseline)
 
-      // 绘制所有 0.01s 小刻度
-      for (let i = 0; i <= maxIndex; i++) {
-        const t = i * SMALL_STEP
-        const x = t * pixelsPerSecond.value
-        let level = 'small'
+      // 计算第一个主刻度时间点（向下取整到 majorStep 的倍数）
+      let firstMajor = Math.floor(tStart / majorStep) * majorStep
+      if (firstMajor < 0) firstMajor = 0
 
-        if (Math.abs(t - Math.round(t)) < EPS) {
-          level = 'major'
-        } else if (Math.abs(t * 10 - Math.round(t * 10)) < EPS) {
-          level = 'medium'
-        }
+      // -------- 3.1 主刻度 + 次刻度 --------
+      for (let T = firstMajor; T <= tEnd + EPS; T += majorStep) {
+        const x = T * pixelsPerSecond.value
 
-        const tick = document.createElement('div')
-        tick.style.position = 'absolute'
-        tick.style.left = `${x}px`
-        tick.style.bottom = '0'
+        const majorTick = document.createElement('div')
+        majorTick.style.position = 'absolute'
+        majorTick.style.bottom = '0'
+        majorTick.style.left = `${x}px`
 
         const line = document.createElement('div')
         line.style.width = '1px'
+        line.style.height = '10px'
+        line.style.background = '#9ca3af'
+        majorTick.appendChild(line)
 
-        if (level === 'small') {
-          line.style.height = '4px'
-          line.style.background = '#eee'
-        } else if (level === 'medium') {
-          line.style.height = '7px'
-          line.style.background = '#ccc'
-        } else {
-          line.style.height = '10px'
-          line.style.background = '#999'
-          const label = document.createElement('div')
-          label.textContent = `${t.toFixed(1)}s`
-          label.style.position = 'absolute'
-          label.style.bottom = '12px'
-          label.style.left = '50%'
-          label.style.transform = 'translateX(-50%)'
-          label.style.fontSize = '10px'
-          label.style.color = '#555'
-          tick.appendChild(label)
+        const label = document.createElement('div')
+        label.textContent = formatTime(T)
+        label.style.position = 'absolute'
+        label.style.bottom = '10px'
+        label.style.left = '50%'
+        label.style.transform = 'translateX(-50%)'
+        label.style.fontSize = '10px'
+        label.style.color = '#4b5563'
+        label.style.whiteSpace = 'nowrap'
+        majorTick.appendChild(label)
+
+        container.appendChild(majorTick)
+
+        // 次刻度：在 (T, T+majorStep) 之间插 minorCount 个
+        for (let i = 1; i <= minorCount; i++) {
+          const tm = T + i * minorStep
+          if (tm > tEnd + EPS) break
+          if (tm < tStart - EPS) continue
+
+          const xm = tm * pixelsPerSecond.value
+
+          const minorTick = document.createElement('div')
+          minorTick.style.position = 'absolute'
+          minorTick.style.left = `${xm}px`
+          minorTick.style.bottom = '0'
+
+          const mLine = document.createElement('div')
+          mLine.style.width = '1px'
+          mLine.style.height = '6px'
+          mLine.style.background = '#d1d5db'
+          minorTick.appendChild(mLine)
+
+          container.appendChild(minorTick)
         }
+      }
 
-        tick.appendChild(line)
-        container.appendChild(tick)
+      // -------- 3.2 次次刻度：固定 0.02s 间隔 --------
+      if (shouldDrawSubMinor) {
+        // 找到第一个 >= tStart 的 0.02 倍数
+        let firstSub =
+          Math.ceil(tStart / subMinorStep) * subMinorStep
+
+        for (let ts = firstSub; ts <= tEnd + EPS; ts += subMinorStep) {
+          const x = ts * pixelsPerSecond.value
+
+          // 跳过已存在的主刻度 / 次刻度位置，避免重叠
+          const isMajor =
+            Math.abs(ts / majorStep - Math.round(ts / majorStep)) < 1e-3
+          const isMinor =
+            Math.abs(ts / minorStep - Math.round(ts / minorStep)) < 1e-3
+          if (isMajor || isMinor) continue
+
+          const subTick = document.createElement('div')
+          subTick.style.position = 'absolute'
+          subTick.style.left = `${x}px`
+          subTick.style.bottom = '0'
+
+          const sLine = document.createElement('div')
+          sLine.style.width = '1px'
+          sLine.style.height = '3px'
+          sLine.style.background = '#e5e7eb'
+          subTick.appendChild(sLine)
+
+          container.appendChild(subTick)
+        }
+      }
+
+      // -------- 3.3 选区渲染（保持原逻辑） --------
+      if (
+        selectionStartPx.value !== null &&
+        selectionEndPx.value !== null &&
+        selectionStartPx.value !== selectionEndPx.value
+      ) {
+        const x1 = Math.max(
+          0,
+          Math.min(selectionStartPx.value, selectionEndPx.value)
+        )
+        const x2 = Math.min(
+          timelineWidth,
+          Math.max(selectionStartPx.value, selectionEndPx.value)
+        )
+        const sel = document.createElement('div')
+        sel.style.position = 'absolute'
+        sel.style.left = `${x1}px`
+        sel.style.width = `${x2 - x1}px`
+        sel.style.top = '0'
+        sel.style.bottom = '0'
+        sel.style.background = 'rgba(59,130,246,0.15)'
+        sel.style.border = '1px solid rgba(37,99,235,0.8)'
+        sel.style.pointerEvents = 'none'
+        container.appendChild(sel)
       }
     })
   }
 
-  /* ---------------- 4. 缩放：滚轮只改 pixelsPerSecond ---------------- */
+  // wrapper 滚动时，只重画当前视窗的刻度（性能优化）
+  function handleTimelineScroll() {
+    drawTimeline()
+  }
 
+  /* ---------------- 4. 缩放：滚轮只改 pixelsPerSecond ---------------- */
   function handleZoom(e) {
     const factor = e.deltaY > 0 ? 0.9 : 1.1
     pixelsPerSecond.value = Math.max(
       5,
       Math.min(800, pixelsPerSecond.value * factor)
     )
-    // ⚠️ 不在这里直接调用 drawTimeline，
-    // 重绘在 StitchingPanel.vue 里通过 watch(pixelsPerSecond) 完成，
-    // clip 宽度和时间轴一起更新。
+    // 重绘由外面的 watch(pixelsPerSecond) 触发
   }
 
-  /* ---------------- 5. 拖拽逻辑（保留你原来的） ---------------- */
+  /* ---------------- 5. 时间轴选区拖动 ---------------- */
+
+  function handleTimelineMouseDown(e) {
+    const container = e.currentTarget
+    if (!container) return
+    isSelecting.value = true
+    const x = e.offsetX
+    selectionStartPx.value = x
+    selectionEndPx.value = x
+    drawTimeline()
+  }
+
+  function handleTimelineMouseMove(e) {
+    if (!isSelecting.value) return
+    const container = e.currentTarget
+    if (!container) return
+    const x = e.offsetX
+    selectionEndPx.value = x
+    drawTimeline()
+  }
+
+  function handleTimelineMouseUp() {
+    isSelecting.value = false
+    drawTimeline()
+  }
+
+  /* ---------------- 6. 拖拽逻辑（保持你原来的） ---------------- */
 
   function handleDragStart(trackType, index, e) {
     draggedClip.value = { track: trackType, index }
@@ -164,7 +330,9 @@ export function useStitching(props, emit) {
     if (src.index === targetIndex) return
 
     const isVideo = src.track === 'video'
-    const list = isVideo ? [...(props.clips || [])] : [...(props.audioClips || [])]
+    const list = isVideo
+      ? [...(props.clips || [])]
+      : [...(props.audioClips || [])]
     const emitEvent = isVideo ? 'update:clips' : 'update:audioClips'
 
     const [moved] = list.splice(src.index, 1)
@@ -202,7 +370,9 @@ export function useStitching(props, emit) {
     }
 
     const isVideo = src.track === 'video'
-    const list = isVideo ? [...(props.clips || [])] : [...(props.audioClips || [])]
+    const list = isVideo
+      ? [...(props.clips || [])]
+      : [...(props.audioClips || [])]
     const emitEvent = isVideo ? 'update:clips' : 'update:audioClips'
 
     const [moved] = list.splice(src.index, 1)
@@ -211,7 +381,7 @@ export function useStitching(props, emit) {
     emit(emitEvent, list)
   }
 
-  /* ---------------- 6. 导出 ---------------- */
+  /* ---------------- 7. 导出 ---------------- */
 
   return {
     pixelsPerSecond,
@@ -222,7 +392,14 @@ export function useStitching(props, emit) {
     draggedOver,
     isDraggingOverContainer,
 
+    // 时间轴相关
     drawTimeline,
+    handleTimelineScroll,
+    handleTimelineMouseDown,
+    handleTimelineMouseMove,
+    handleTimelineMouseUp,
+
+    // 缩放 & 拖拽
     handleZoom,
     handleDragStart,
     handleDragOverItem,

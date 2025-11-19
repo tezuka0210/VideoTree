@@ -2,134 +2,385 @@
 @tailwind components;
 @tailwind utilities;
 
-
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-html, body {
-    height: 100%; /* 关键：让 html 和 body 占满全高 */
-    margin: 0;
-    overflow: hidden; /* 关键：禁止整个页面滚动 */
+/* ===================== 全局基础 ===================== */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden; /* 页面不整体滚动，只让内部容器滚动 */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #f3f4f6;
+  color: #111827;
 }
+
 #app {
-    height: 100%;
+  height: 100%;
 }
+
+/* ===================== workflow 节点卡片 ===================== */
+
 .node-card {
-    width: 140px;
-    border-radius: 8px;
-    overflow: hidden;
-    background: white;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-    border: 2px solid #e5e7eb;
-    transition: border-color 0.2s;
+  width: 140px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+  transition:
+    border-color 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    transform 0.1s ease-out;
 }
+
+.node-card:hover {
+  border-color: #cbd5f5;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
 .node-card.selected {
-    border-color: #3b82f6;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
 }
+
+/* 缩略图（用于节点和拼接区） */
 .thumb {
-    width: 140px;
-    height: 100px;
-    object-fit: cover;
-    background: #f3f4f6;
-    display: block;
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  background: #f3f4f6;
+  display: block;
 }
+
+/* 节点标题 */
 .node-label {
-    padding: 6px 8px;
-    font-size: 12px;
-    color: #111827;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #111827;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+/* workflow 连接线 */
 .link {
-    fill: none;
-    stroke: #9ca3af;
-    stroke-width: 2px;
+  fill: none;
+  stroke: #d1d5db;
+  stroke-width: 2px;
 }
+
+/* ===================== 预览弹窗 ===================== */
+
 .overlay {
-    position: fixed;
-    left: 0; top: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
 }
+
 .modal {
-    background: #fff;
-    border-radius: 8px;
-    max-width: 90%;
-    max-height: 90%;
-    padding: 12px;
-    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
-    overflow: auto;
-}
-.modal img, .modal video {
-    max-width: 100%;
-    max-height: 80vh;
-    display: block;
-    margin: 0 auto;
-}
-.clip-item {
-    position: relative;
-    cursor: grab;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 2px;
-    background: white;
-    transition: transform 0.2s;
-}
-.clip-item img, .clip-item video { /* 统一用img显示缩略图，简化 */
-    width: 100px;
-    height: 60px;
-    object-fit: cover;
-    display: block;
-}
-.clip-item .remove-btn {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    background: rgba(239, 68, 68, 0.8); /* Red-500 with opacity */
-    color: white;
-    border-radius: 50%;
-    width: 18px;
-    height: 18px;
-    font-size: 12px;
-    line-height: 16px;
-    text-align: center;
-    cursor: pointer;
-    border: 1px solid white;
-}
-.clip-item.dragging { /* 拖拽时的样式 */
-    opacity: 0.5;
-    transform: scale(1.05);
-}
-.drag-over { /* 拖放目标区域的样式 */
-    border-style: solid;
-    border-color: #3b82f6; /* Blue-500 */
-}
-/* 覆盖掉 .clip-item 的固定宽度 */
-.clip-item {
-    position: relative;
-    cursor: grab;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 2px;
-    background: white;
-    transition: transform 0.2s;
-    /* 【新增】取消固定宽度，允许 JS 控制 */
-    /* width: 100px; */
-    flex-shrink: 0; /* 防止项目在 flex 布局中被压缩 */
+  background: #ffffff;
+  border-radius: 12px;
+  max-width: 90%;
+  max-height: 90%;
+  padding: 16px 18px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.6);
+  overflow: auto;
 }
 
-/* 【新增】修改 clips-container 为水平滚动 */
+.modal img,
+.modal video {
+  max-width: 100%;
+  max-height: 80vh;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+}
+
+/* ===================== 时间轴 & 拼接区域 ===================== */
+
+/* 外层容器：留出内边距，避免贴边 */
+#stitching-panel-wrapper {
+  padding: 8px 16px 5px;
+  box-sizing: border-box;
+  background: #f9fafb;
+  border-radius: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-bottom: 4px;
+}
+
+/* 隐藏横向滚动条（仍然可以滚动） */
+#stitching-panel-wrapper::-webkit-scrollbar {
+  display: none;
+}
+#stitching-panel-wrapper {
+  scrollbar-width: none;
+}
+
+/* 时间轴区域本身（宽度由 JS 控制） */
+#timeline-ruler {
+  position: relative;
+  background: #fafafa;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* 视频轨：固定高度，防止加 clip 时轻微抖动 */
+#stitching-panel {
+  min-height: 86px;
+  height: 94px;
+  display: flex;
+  align-items: center;
+  padding-top: 20px;    /* 原来 24 */
+  padding-bottom: 8px;  /* 原来 16 */
+  box-sizing: border-box;
+}
+
+/* 音频轨：同理 */
+#audio-stitching-panel {
+  min-height: 46px;     /* 原来 56 */
+  height: 46px;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid #d1d5db;
+  margin-top: 8px;      /* ✅ 新增：视频轨和音频轨之间留出空隙 */
+}
+
+/* ===================== 视频 / 音频 clips 容器 ===================== */
+
+/* 视频 clips 容器，让 clip 离时间轴再远一点 */
 #clips-container {
-    display: flex;
-    flex-wrap: nowrap; /* 关键：不换行 */
-    gap: 8px;
-    overflow-x: auto;  /* 关键：允许水平滚动 */
-    padding-bottom: 8px; /* 为滚动条留出空间 */
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 56px;
+  padding: 6px 0 10px;
+  margin-top: 8px;
+}
+
+/* 音频 clips 容器 */
+#audio-clips-container {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 0;
+}
+
+/* 拖放目标区域高亮（视频轨 & 音频轨） */
+.drag-over {
+  border-style: solid;
+  border-color: #3b82f6;
+  background-color: #eff6ff;
 }
 
 
-.loader { border-top-color: #3498db; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* ===================== 视频 clip-item 样式 ===================== */
+/* 统一覆盖旧样式，避免重复定义 */
+.clip-item {
+  position: relative;
+  cursor: grab;
+  border-radius: 6px;
+  padding: 4px;
+  background: linear-gradient(to bottom, #ffffff, #f9fafb);
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;     /* ✅ 让缩略图在上，信息条在下 */
+  align-items: stretch;       /* 信息条撑满宽度 */
+  justify-content: flex-start;
+  transition:
+    box-shadow 0.15s ease-out,
+    transform 0.1s ease-out,
+    border-color 0.15s ease-out,
+    background 0.15s ease-out;
+  flex-shrink: 0;
+}
+
+/* 缩略图本身完全填满 clip-item 顶部 */
+.clip-item img,
+.clip-item video {
+  width: 100%;
+  height: 60px;
+  object-fit: cover;
+  display: block;
+  border-radius: 4px;
+}
+
+/* ===== 视频底部信息条（icon + name + duration） ===== */
+.clip-meta {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #4b5563;
+  width: 100%;
+}
+
+.clip-meta-left {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.clip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  font-size: 10px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-right: 4px;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.clip-name {
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clip-duration {
+  margin-left: 6px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===================== 删除按钮（视频 & 音频） ===================== */
+
+.clip-item .remove-btn,
+.audio-clip-item .remove-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ffffff;
+  color: #ef4444;
+  border-radius: 999px;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid #fecaca;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  opacity: 0.85;
+  transition:
+    transform 0.1s ease-out,
+    opacity 0.1s ease-out,
+    box-shadow 0.1s ease-out;
+}
+
+.clip-item .remove-btn:hover,
+.audio-clip-item .remove-btn:hover {
+  opacity: 1;
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.28);
+}
+
+/* 拖动中的样式（视频 & 音频统一） */
+.clip-item.dragging,
+.audio-clip-item.dragging {
+  opacity: 0.3;
+  transform: scale(0.95);
+}
+
+/* ===================== 音频块样式 ===================== */
+/* 音频名称前的 AUD 小标签 */
+.audio-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1d4ed8;
+  margin-right: 4px;
+  box-sizing: border-box;
+}
+
+/* 让名字和 AUD 在一行展示 */
+.audio-clip-name {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 音频块整体风格 */
+.audio-clip-item {
+  position: relative;
+  height: 40px;
+  border-radius: 6px;          /* 原来是 999px，改成和视频一致 */
+  padding: 0 12px;
+  background: linear-gradient(to right, #e5f2ff, #e0ecff);
+  border: 1px solid #bfdbfe;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  transition:
+    box-shadow 0.15s ease-out,
+    transform 0.1s ease-out,
+    border-color 0.1s ease-out;
+}
+
+.audio-clip-item:hover {
+  border-color: #60a5fa;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18);
+  transform: translateY(-1px);
+}
+
+.audio-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-size: 11px;
+  color: #1f2933;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.audio-clip-name {
+  font-weight: 500;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audio-clip-duration {
+  font-size: 10px;
+  color: #6b7280;
+}
+
+/* ===================== Loader ===================== */
+
+.loader {
+  border-top-color: #2563eb;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
