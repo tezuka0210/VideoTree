@@ -477,67 +477,7 @@ const getBufferMeta = (clip: any): string => {
 #stitching-panel-wrapper {
   background: #f9fafb;
   border-radius: 8px;
-}
-
-/* ===== buffer-strip：固定高度 + 底部分割线，左右不留白 ===== */
-
-#buffer-strip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0 8px;  /* ✅ 上 4px，下 8px，避免粗边框压住灰线 */
-  box-sizing: border-box;
-  min-height: 64px;
-  max-height: 64px;
-  border-bottom: 1px solid #e5e7eb;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-/* buffer 卡片：根据类型加三原色边框和淡填充 */
-.buffer-item {
-  position: relative;
-  flex: 0 0 auto;
-  width: 80px;
-  height: 56px;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: grab;
-  background: #ffffff;
-}
-
-.buffer-item--image {
-  border: 2px solid var(--media-image);
-  background: color-mix(in srgb, var(--media-image) 16%, #ffffff);
-}
-
-.buffer-item--video {
-  border: 2px solid var(--media-video);
-  background: color-mix(in srgb, var(--media-video) 16%, #ffffff);
-}
-
-.buffer-item--audio {
-  border: 2px solid var(--media-audio);
-  background: color-mix(in srgb, var(--media-audio) 16%, #ffffff);
-}
-
-/* 去掉 hover 的上下抖动效果 */
-.buffer-item:hover {
-  transform: none;
-  box-shadow: none;
-}
-
-.buffer-item img,
-.buffer-item video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* 音频波形容器：占据中部区域 */
-.buffer-waveform {
-  width: 100%;
-  height: 36px;
+  overflow-y: visible;   /* 不裁切内部内容 */
 }
 
 /* 空 buffer 的占位文字 */
@@ -557,7 +497,6 @@ const getBufferMeta = (clip: any): string => {
 }
 
 /* ===== buffer 内插入辅助线：竖线提示 before/after ===== */
-
 .buffer-item.insert-before::before,
 .buffer-item.insert-after::after {
   content: '';
@@ -576,42 +515,10 @@ const getBufferMeta = (clip: any): string => {
   right: -2px;
 }
 
-/* buffer-meta：底部圆角条，用对应类型三原色填充 */
-
-.buffer-meta {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 4px;
-  height: 16px;
-  border-radius: 999px;
-  padding: 0 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: #ffffff;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 0;          /* ✅ 保证在关闭按钮下面 */
-}
-
-.buffer-item--image .buffer-meta {
-  background: var(--media-image);
-}
-
-.buffer-item--video .buffer-meta {
-  background: var(--media-video);
-}
-
-.buffer-item--audio .buffer-meta {
-  background: var(--media-audio);
-}
-
 /* ===== 轨道分隔线：时间轴下是 video，上 video 下是 audio ===== */
 
 #timeline-ruler {
-  border-top: none; /* 由 buffer-strip 的 border-bottom 做上一条线 */
+  border-top: none; /* 上面的线由 buffer-strip 提供 */
 }
 
 /* video 轨道上边缘线（和灰色一致） */
@@ -632,3 +539,4 @@ const getBufferMeta = (clip: any): string => {
   background: color-mix(in srgb, var(--media-audio-bg, #F4A7A8) 16%, #ffffff);
 }
 </style>
+

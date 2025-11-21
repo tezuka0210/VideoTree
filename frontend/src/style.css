@@ -123,19 +123,28 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 0 4px;
+
+  /* 让上方有足够高度，按钮和卡片都不被裁掉 */
+  padding: 8px 0 8px;
+
   min-height: 72px;
+  max-height: 72px;
+
+  overflow-x: auto;
+  overflow-y: hidden;   /* ✅ buffer 整行高度固定，不会抖动 */
+
   box-sizing: border-box;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .buffer-item {
-  position: relative; 
-  width: 72px;
-  height: 64px;
+  overflow: visible;
+  position: relative;
+  width: 80px;
+  height: 56px;
   border-radius: 6px;
-  background: #f9fafb;
+  background: #ffffff;
   border: 1px solid #e5e7eb;
-  overflow: visible;      /* ✅ 允许关闭按钮超出卡片 */
   flex-shrink: 0;
   cursor: grab;
   display: flex;
@@ -143,40 +152,68 @@ body {
   justify-content: center;
   transition:
     box-shadow 0.15s ease-out,
-    transform 0.1s ease-out,
     border-color 0.15s ease-out;
+    /* ❌ 不再对 transform 做过渡，彻底避免上下位移 */
 }
 
-/* 防止缩略图“漏角”，补一个圆角 */
+/* 缩略图：刚好填满卡片 */
 .buffer-item img,
 .buffer-item video {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
+/* buffer 底部的数据条 */
+.buffer-meta {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  height: 16px;
+  border-radius: 999px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #ffffff;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 0;
+}
 
+/* 三种类型的色系 */
+.buffer-item--image {
+  border: 2px solid var(--media-image);
+  background: color-mix(in srgb, var(--media-image) 16%, #ffffff);
+}
+.buffer-item--image .buffer-meta {
+  background: var(--media-image);
+}
+
+.buffer-item--video {
+  border: 2px solid var(--media-video);
+  background: color-mix(in srgb, var(--media-video) 16%, #ffffff);
+}
+.buffer-item--video .buffer-meta {
+  background: var(--media-video);
+}
+
+.buffer-item--audio {
+  border: 2px solid var(--media-audio);
+  background: color-mix(in srgb, var(--media-audio) 16%, #ffffff);
+}
+.buffer-item--audio .buffer-meta {
+  background: var(--media-audio);
+}
+
+/* hover 只改颜色和阴影，不再位移 → 没有 y 抖动 */
 .buffer-item:hover {
   border-color: #cbd5f5;
   box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
-}
-
-.buffer-item img,
-.buffer-item video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.buffer-item img,
-.buffer-item video,
-.buffer-meta {
-  position: relative;
-  z-index: 0;
 }
 
 .buffer-placeholder {
@@ -184,6 +221,7 @@ body {
   color: #9ca3af;
   font-style: italic;
 }
+
 
 /* 外层容器：留出内边距，避免贴边 */
 #stitching-panel-wrapper {
@@ -258,11 +296,18 @@ body {
 
 /* 拖放目标区域高亮（视频轨 & 音频轨） */
 .drag-over {
-  border-style: solid;
-  border-color: #3b82f6;
-  background-color: #eff6ff;
-}
+  /* 外层柔光描边（不改变尺寸） */
+  box-shadow:
+    0 0 0 1px rgba(180, 190, 200, 0.55) inset,
+    0 0 10px rgba(200, 210, 220, 0.35) inset;
 
+  /* 内部渐变科技光感 */
+  background: linear-gradient(
+    180deg,
+    rgba(245, 247, 250, 0.9) 0%,
+    rgba(232, 235, 240, 0.85) 100%
+  );
+}
 
 /* ===================== 视频 clip-item 样式 ===================== */
 /* 统一覆盖旧样式，避免重复定义 */
@@ -353,17 +398,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ===================== 删除按钮（视频 & 音频） ===================== */
-.clip-item .remove-btn,
-.audio-clip-item .remove-btn,
-.buffer-item .remove-btn {
+/* ===================== 通用删除按钮底座 ===================== */
+.remove-btn {
   position: absolute;
-  top: -6px;
-  right: -6px;
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: #ffffff;        /* 默认白底 */
+  background: #ffffff;
   color: #dc2626;             /* red-600 */
   border: 1px solid #fecaca;  /* red-200 */
   font-size: 12px;
@@ -375,7 +416,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10; 
+  z-index: 10;
   transition:
     background-color 0.15s ease-out,
     color 0.15s ease-out,
@@ -385,36 +426,34 @@ body {
     box-shadow 0.1s ease-out;
 }
 
-.clip-item .remove-btn:hover,
-.audio-clip-item .remove-btn:hover,
-.buffer-item .buffer-remove-btn:hover {
-  background-color: #dc2626;  /* hover: 红底 */
-  color: #ffffff;             /* 白色 × */
+/* 视频 / 音频轨里的 clip：继续保持“稍微漂在外面”的感觉 */
+.clip-item .remove-btn,
+.audio-clip-item .remove-btn {
+  top: -6px;
+  right: -6px;
+}
+
+/* buffer 区域：按钮放在卡片内部右上角，永远不会被裁切 */
+.buffer-item .buffer-remove-btn {
+  top: -6px;
+  right: -6px;
+  z-index: 100; /* 比缩略图和 buffer-meta 都高 */
+}
+
+/* hover / active 效果统一 */
+.remove-btn:hover {
+  background-color: #dc2626;
+  color: #ffffff;
   border-color: #dc2626;
   opacity: 1;
   transform: scale(1.05);
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.28);
 }
 
-.clip-item .remove-btn:active,
-.audio-clip-item .remove-btn:active,
-.buffer-item .buffer-remove-btn:active {
+.remove-btn:active {
   transform: scale(0.95);
 }
 
-/* buffer 区的关闭按钮：只控制显隐，具体形状复用上面的通用样式 */
-.buffer-remove-btn {
-  position: absolute;
-  top: -7px;     /* 略微超出卡片 */
-  right: -7px;
-  opacity: 0;
-  z-index: 25;    /* 确保盖在缩略图上 */
-  pointer-events: auto;
-}
-
-.buffer-item:hover .buffer-remove-btn {
-  opacity: 1;
-}
 
 /* 拖动中的样式（视频 & 音频统一） */
 .clip-item.dragging,
