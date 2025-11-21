@@ -274,7 +274,7 @@ html, body, #app {
 .center-top {
   flex: 1;
   min-height: 0;
-  padding: 8px 8px 4px;
+  padding: 8px 8px 6px;
   box-sizing: border-box;
   border-bottom: 1px solid #f3f4f6;
   display: flex;
@@ -289,6 +289,7 @@ html, body, #app {
 .center-bottom {
   padding: 4px 8px 8px;
   box-sizing: border-box;
+  min-height: calc(32%);   /* ⭐ 半自动，只加了约 2% 的高度 */
 }
 
 .col-right {
