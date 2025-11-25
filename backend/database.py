@@ -45,6 +45,7 @@ def init_db():
             module_id TEXT NOT NULL,
             parameters TEXT,  -- 将作为JSON字符串存储
             assets TEXT,      -- 将作为JSON字符串存储
+            media TEXT,       -- 将作为JSON字符串存储
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (tree_id) REFERENCES Trees (tree_id)
@@ -233,6 +234,26 @@ def get_tree_as_json(tree_id: int) -> dict | None:
     except sqlite3.Error as e:
         print(f"获取树 {tree_id} 失败: {e}")
         return None
+    finally:
+        conn.close()
+
+# database.py
+def update_node(node_id: str, payload: dict):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        parameters_json = json.dumps(payload.get('parameters', {}))
+        assets_json = json.dumps(payload.get('assets', {}))
+        media_json = json.dumps(payload.get('media', {}))  # 添加 media 字段处理
+        cursor.execute(
+            "UPDATE nodes SET parameters = ?, assets = ?, media = ? WHERE node_id = ?",
+            (parameters_json, assets_json, media_json, node_id)
+        )
+        conn.commit()
+        print(f"节点 {node_id} 已成功更新。")
+    except sqlite3.Error as e:
+        conn.rollback()
+        print(f"更新节点 {node_id} 失败: {e}")
     finally:
         conn.close()
 

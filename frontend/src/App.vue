@@ -30,6 +30,7 @@
             @open-generation="handleOpenGenerationPopover"
             @toggle-collapse="toggleNodeCollapse"
             @create-card="createCard"
+            @refresh-node="handleRefreshNode"
           />
         </div>
 
@@ -185,6 +186,20 @@ const createCard = async (parentNode: AppNode, moduleId: string) => {
   // 4. (可选) 生成完后清空选中
   selectedParentIds.value = []; 
 }
+
+const handleRefreshNode = (nodeId: string, newModuleId: string) => {
+  // 找到需要刷新的节点并修改其数据（触发响应式更新）
+  allNodes.value = allNodes.value.map(node => {
+    if (node.id === nodeId) {
+      // 关键：替换 module_id 并返回新对象（触发响应式式）
+      return {
+        ...node,
+        module_id: newModuleId // 应用新的模块类型
+      };
+    }
+    return node;
+  });
+};
 
 const isGenerationPopoverOpen = ref(false)
 const initialModuleIdForPopover = ref<string | null>(null)

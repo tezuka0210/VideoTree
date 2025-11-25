@@ -227,6 +227,7 @@ export function useWorkflow() {
       showStatus('错误：无法处理或渲染树数据。')
       return
     }
+    console.log('原始节点数据:', nodes); 
 
     const root = nodes.find(n => n.parent_id === null)
     rootNodeId.value = root ? root.node_id : null

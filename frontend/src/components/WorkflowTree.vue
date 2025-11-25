@@ -30,7 +30,9 @@ const emit = defineEmits([
   'open-generation',
   'create-card',
   'toggle-collapse',
-  'rename-node'
+  'rename-node',
+  'update-node-parameters',
+  'refresh-node'
 ])
 
 // 传给 lib 的 emit 适配器
@@ -59,31 +61,51 @@ onMounted(() => {
 watch(
   () => props.nodes,
   (newNodes, oldNodes) => {
+    console.log('完整 oldNodes:', oldNodes.map(n => ({id: n.id, module_id: n.module_id})));
+    console.log('完整 newNodes:', newNodes.map(n => ({id: n.id, module_id: n.module_id})));
     if (!svgContainer.value) return
 
-    let structureChanged = false
+    // 在 WorkflowTree.vue 的 watch(props.nodes) 中
+    let structureChanged = false;
+    // 1. 先判断节点数量是否变化
     if (!oldNodes || newNodes.length !== oldNodes.length) {
-      structureChanged = true
+      structureChanged = true;
     } else {
-      const newIds = new Set(newNodes.map(n => n.id))
+      // 2. 判断节点ID集合是否变化
+      const newIds = new Set(newNodes.map(n => n.id));
       for (const n of oldNodes) {
         if (!newIds.has(n.id)) {
-          structureChanged = true
-          break
+          structureChanged = true;
+          break;
+        }
+      }
+      
+      // 3. 新增：判断任意节点的 module_id 是否变化（关键）
+      if (!structureChanged) {
+        for (let i = 0; i < newNodes.length; i++) {
+          const newNode = newNodes[i];
+          const oldNode = oldNodes.find(n => n.id === newNode.id); // 按ID匹配旧节点
+          console.log(`old module_id:${oldNode.module_id}       new module_id:${newNode.module_id}`)
+          if (oldNode && newNode.module_id !== oldNode.module_id) {
+            structureChanged = true;
+            break;
+          }
         }
       }
     }
 
     if (structureChanged) {
+      console.log('[WorkflowTree] 节点结构变化，调用 renderTree');
       renderTree(
         svgContainer.value,
         newNodes,
         props.selectedIds,
         graphEmit,
         workflowTypes
-      )
+      );
     } else {
-      updateVisibility(svgContainer.value, newNodes)
+      console.log('[WorkflowTree] 节点状态变化，调用 updateVisibility');
+      updateVisibility(svgContainer.value, newNodes);
     }
   },
   { deep: true }
@@ -93,6 +115,7 @@ watch(
 watch(
   () => props.selectedIds,
   (ids) => {
+    console.log('[WorkflowTree] props.selectedIds 变化', ids);
     if (svgContainer.value) updateSelectionStyles(svgContainer.value, ids)
   },
   { deep: true }

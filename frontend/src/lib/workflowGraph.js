@@ -133,6 +133,7 @@ function inferCardType(node) {
 
   if (node.module_id === 'Init') return 'init'
   if (node.module_id === 'AddText') return 'textFull'
+  if (node.module_id === 'TextImage') return 'TextImage'
   if (node.module_id === 'TextToAudio' || isAudioMedia || (node.media && node.media.type === 'audio')) return 'audio'
   return 'io'
 }
@@ -647,23 +648,42 @@ title.on('dblclick', (ev) => {
       .style('display', 'flex')
       .style('flex-direction', 'column')
 
-    const textArea = body.append('xhtml:div')
+    const textArea = body.append('xhtml:textarea')
+      .attr('class', 'thin-scroll') // 复用你之前定义的滚动条样式
       .style('flex', '1 1 auto')
+      .style('width', '100%')
       .style('padding', '6px')
       .style('font-size', '10px')
       .style('color', '#374151')
-      .style('white-space', 'pre-wrap')
-      .style('word-break', 'break-all')
+      .style('background-color', 'transparent') // 透明背景
+      .style('border', 'none')                  // 无边框
       .style('border-bottom', '1px dashed #e5e7eb')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
-      .on('mousedown', ev => ev.stopPropagation())
+      .style('resize', 'none')                  // 禁止拉伸
+      .style('outline', 'none')                 // 聚焦时不显示黑框
+      .style('font-family', 'inherit')
+      .property('value', promptText)            // 设置初始值
+      .attr('placeholder', 'Click to enter prompt words...')
 
-    textArea.append('xhtml:div')
-      .style('opacity', promptText ? '0.7' : '0.4')
-      .text(promptText || '(Prompt text placeholder)')
+    // 1. 关键：阻止 mousedown 冒泡，否则点击输入框会触发节点的拖拽
+    textArea.on('mousedown', ev => ev.stopPropagation())
 
-    /*const toolbar = body.append('xhtml:div')
+    // 2. 监听输入变化 (使用 blur 事件，在失焦时保存，避免频繁触发)
+    textArea.on('blur', function() {
+      const newVal = d3.select(this).property('value')
+      if (newVal === promptText) return
+      if (!d.parameters) d.parameters = {}
+      if (d.module_id === 'AddText') {
+        d.parameters.text = newVal
+      } else {
+        d.parameters.positive_prompt = newVal
+      }
+
+      // B. 发出事件通知父组件保存 (你需要确保父组件监听了这个事件)
+      console.log('[Graph] 更新节点文本:', d.id, newVal)
+      emit('update-node-parameters', d.id, d.parameters)
+    })
+
+    const toolbar = body.append('xhtml:div')
       .style('flex-shrink', '0')
       .style('padding', '4px 6px')
       .style('display', 'flex')
@@ -671,7 +691,7 @@ title.on('dblclick', (ev) => {
       .style('gap', '4px')
 
     // Collapse button
-    const collapseBtn = toolbar.append('xhtml:button')
+    /*const collapseBtn = toolbar.append('xhtml:button')
       .attr('class', 'collapse-btn')
       .text(d._collapsed ? '+' : '-')
       .style('width', '18px')
@@ -702,12 +722,16 @@ title.on('dblclick', (ev) => {
           .style('background', '#ffffff')
           .style('color', d._collapsed ? '#E4080A' : '#6b7280')
           .style('border-color', '#e5e7eb')
-      })
+      })*/
 
 
-    // Clone button
-    const cloneBtn = toolbar.append('xhtml:button')
-      .text('+')
+    // Image button
+    const ImgBtn = toolbar.append('xhtml:button')
+      .html(`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="transform:scale(2); transform-origin:center;">
+            <path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+            <path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>`)
       .style('width', '18px')
       .style('height', '18px')
       .style('border-radius', '999px')
@@ -723,8 +747,23 @@ title.on('dblclick', (ev) => {
       .on('mousedown', ev => ev.stopPropagation())
       .on('click', ev => {
         ev.stopPropagation()
-        // TODO: clone node logic
-        console.log('[TODO] clone node', d.id)
+        // 1. 修改模块类型标识（关键：用于区分渲染方式）
+        //d.module_id = 'TextImage'; // 假设textImage卡的module_id是这个
+        
+        // 2. 保留原有文本内容
+        if (!d.parameters) d.parameters = {};
+        const textContent = d.parameters.text || d.parameters.positive_prompt || '';
+        d.parameters.text = textContent; // 统一文本存储字段
+        
+        // 3. 初始化媒体相关字段（替代isUploadPlaceholder的作用）
+        d.media = {
+          type: 'image',
+          url: '', // 空URL表示需要上传
+          rawPath: null
+        };
+        
+        // 4. 触发节点重新渲染
+        emit('refresh-node', d.id, "TextImage");
       })
       .on('mouseenter', function () {
         d3.select(this)
@@ -740,7 +779,7 @@ title.on('dblclick', (ev) => {
       })
 
     // Delete button
-    const deleteBtn = toolbar.append('xhtml:button')
+    /*const deleteBtn = toolbar.append('xhtml:button')
       .text('×')
       .style('width', '18px')
       .style('height', '18px')
@@ -770,10 +809,130 @@ title.on('dblclick', (ev) => {
           .style('background', '#ffffff')
           .style('color', '#dc2626')
           .style('border-color', '#fecaca')
-      })
+      })*/
 
-    addTooltip(gEl, d)*/
+    addTooltip(gEl, d)
   }
+
+  /**
+   * 图文混排节点：左侧大文本，右侧图片/占位符
+   */
+  function renderTextImageNode(gEl, d, selectedIds, emit) {
+    // 1. 计算布局 (类似 IO 卡，稍微宽一点)
+    // 你可以在 renderTree 的高度计算里为 textImage 设置专门的宽高
+    // 比如 width = 320, height = 140
+    
+    const fo = gEl.append('foreignObject')
+      .attr('width', d.calculatedWidth)
+      .attr('height', d.calculatedHeight)
+      .attr('x', -d.calculatedWidth / 2)
+      .attr('y', -d.calculatedHeight / 2)
+      .style('overflow', 'visible')
+
+    const card = fo.append('xhtml:div')
+      .attr('class', 'node-card')
+      .style('width', '100%')
+      .style('height', '100%')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('border-width', '2px')
+      .style('border-radius', '8px')
+      .style('border-color', getNodeBorderColor(d))
+      .style('position', 'relative')
+      .style('cursor', 'pointer')
+      .style('background-color', '#ffffff')
+      .style('user-select', 'none')
+      .style('-webkit-user-select', 'none')
+
+    if (selectedIds.includes(d.id)) {
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', `0 0 0 2px ${selColor}`)
+    } else {
+      card.style('box-shadow', 'none')
+    }
+
+    card.on('click', ev => {
+      if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
+      ev.stopPropagation()
+      const selected = new Set(selectedIds)
+      const on = selected.has(d.id)
+      if (on) selected.delete(d.id)
+      else if (selected.size < 2) selected.add(d.id)
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
+      emit('update:selectedIds', Array.from(selected))
+    })
+
+    card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
+      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
+
+    buildHeader(card, d)
+
+    // --- 核心布局：左右分栏 ---
+    const body = card.append('xhtml:div')
+      .style('flex', '1 1 auto')
+      .style('min-height', '0')
+      .style('display', 'flex')
+      .style('flex-direction', 'row') // 左右排列
+
+    // === 左侧：纯文本编辑器 ===
+    const left = body.append('xhtml:div')
+      .style('flex', '1') // 占据 50%
+      .style('min-width', '0')
+      .style('border-right', '1px solid #e5e7eb')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+
+    // 这里复用你之前改好的 textarea 逻辑
+    const promptText = d.parameters?.text || d.parameters?.positive_prompt || ''
+    const textArea = left.append('xhtml:textarea')
+        .attr('class', 'thin-scroll')
+        .style('flex', '1').style('width', '100%').style('padding', '6px')
+        .style('font-size', '10px').style('color', '#374151')
+        .style('border', 'none').style('resize', 'none').style('outline', 'none')
+        .style('background', 'transparent')
+        .property('value', promptText)
+        .on('mousedown', ev => ev.stopPropagation())
+        
+        .on('blur', function() {
+            const newVal = d3.select(this).property('value')
+            if (newVal !== promptText) {
+              if (!d.parameters) d.parameters = {}
+              d.parameters.text = newVal
+              emit('update-node-parameters', d.id, d.parameters)
+            }
+        })
+
+    // === 右侧：媒体显示区 ===
+    const right = body.append('xhtml:div')
+      .style('flex', '1 1 0')
+      .style('min-width', '0')
+      .style('padding', '2px 4px')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('position', 'relative')
+      .style('overflow', 'hidden')
+
+    // 判断是否是占位符
+    const hasMedia = !!(d.media && d.media.rawPath)
+    const mediaUrl = hasMedia ? d.media.url : ''
+    
+    
+
+    right.append('xhtml:div')
+      .style('position', 'absolute')
+      .style('top', '2px')
+      .style('left', '4px')
+      .style('font-size', '9px')
+      .style('font-weight', '600')
+      .style('color', '#6b7280')
+      .style('user-select', 'none')
+      .text('Click to upload')
+    
+    // ... (添加 addTooltip 等) ...
+  }
+
 
   /**
    * 文本 + 音频节点（上下结构）
@@ -1474,6 +1633,9 @@ title.on('dblclick', (ev) => {
       renderTextFullNode(gEl, d, selectedIds, emit)
     } else if (cardType === 'audio' || isAudioMedia) {
       renderAudioNode(gEl, d, selectedIds, emit, workflowTypes)
+    } else if (cardType == 'TextImage'){
+      console.log(`render TextImage`)
+      renderTextImageNode(gEl, d, selectedIds, emit)
     } else {
       renderIONode(gEl, d, selectedIds, emit, workflowTypes)
     }

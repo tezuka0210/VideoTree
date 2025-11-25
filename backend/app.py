@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from typing import Optional
 from moviepy import VideoFileClip, concatenate_videoclips,ImageClip,AudioFileClip,concatenate_audioclips
 # 导入之前设计的数据库操作模块
+from database import update_node, get_tree_as_json
 import database
 import random
 
@@ -349,6 +350,28 @@ def upload_asset():
         return jsonify({"error": f"处理上传失败: {e}"}), 500
 
 
+# -------------- 新增：PUT /api/nodes/<node_id>/media-placeholder --------------
+# app.py
+@app.route('/api/nodes/<node_id>', methods=['PUT'])
+def update_node_media(node_id):
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "请求体不能为空"}), 400
+
+        # 调用 update_node 函数更新节点
+        update_node(node_id, data)
+
+        # 获取更新后的树
+        tree_data = get_tree_as_json(database.get_node(node_id)['tree_id'])
+        return jsonify(tree_data), 200
+
+    except Exception as e:
+        print("更新节点失败:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+        
 @app.route('/api/trees/<int:tree_id>', methods=['GET'])
 def get_tree(tree_id):
     """API: 获取一棵树的完整结构，如果项目或根节点不存在，则自动创建。"""
