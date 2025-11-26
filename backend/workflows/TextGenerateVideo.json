@@ -147,7 +147,7 @@
   },
   "82": {
     "inputs": {
-      "shift": 5.000000000000001,
+      "shift": 5,
       "model": [
         "83",
         0
@@ -161,7 +161,7 @@
   "83": {
     "inputs": {
       "lora_name": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
-      "strength_model": 1.0000000000000002,
+      "strength_model": 1,
       "model": [
         "75",
         0
@@ -175,7 +175,7 @@
   "85": {
     "inputs": {
       "lora_name": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
-      "strength_model": 1.0000000000000002,
+      "strength_model": 1,
       "model": [
         "76",
         0
@@ -188,7 +188,7 @@
   },
   "86": {
     "inputs": {
-      "shift": 5.000000000000001,
+      "shift": 5,
       "model": [
         "85",
         0
@@ -219,7 +219,7 @@
     "inputs": {
       "fps": 16,
       "images": [
-        "87",
+        "90",
         0
       ]
     },
@@ -239,6 +239,24 @@
     "class_type": "CLIPTextEncode",
     "_meta": {
       "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "90": {
+    "inputs": {
+      "ckpt_name": "rife47.pth",
+      "clear_cache_after_n_frames": 10,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1,
+      "frames": [
+        "87",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE VFI"
     }
   }
 }

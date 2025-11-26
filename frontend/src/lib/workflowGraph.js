@@ -1240,10 +1240,25 @@ title.on('dblclick', (ev) => {
    * 左右 IO 卡：左输入，右输出（图片 / 视频 / 文本）
    */
   function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
-    const hasMedia = !!(d.media && d.media.rawPath)
+    const assets = d.assets || {};
+    const allMedia = assets.images || [];
+    // 获取图片和视频列表，如果不存在则为空数组
+    const videoUrls = allMedia.filter(url => 
+      url.includes('.mp4') || 
+      url.includes('.mov') || 
+      url.includes('.webm') || 
+      url.includes('subfolder=video')
+    );
+
+    // 筛选出所有图片URL（排除已识别为视频的）
+    const imageUrls = allMedia.filter(url => !videoUrls.includes(url));
+    // 判断是否有任何媒体可以显示
+    const hasMedia = allMedia.length > 0;
+    //const hasMedia = !!(d.media && d.media.rawPath)
     const mediaUrl = hasMedia ? d.media.url : ''
     const rawPath = hasMedia ? d.media.rawPath : ''
     const mediaType = d.media && d.media.type
+    
 
     const isVideo =
       typeof rawPath === 'string' &&
@@ -1516,10 +1531,12 @@ title.on('dblclick', (ev) => {
       .style('min-width', '0')
       .style('padding', '2px 4px')
       .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
+      .style('flex-direction', 'column') // 垂直排列多个媒体
+      .style('align-items', 'center')     // 水平居中
+      .style('justify-content', 'flex-start') // 从顶部开始排列
       .style('position', 'relative')
-      .style('overflow', 'hidden')
+      .style('overflow-y', 'auto')        // 当内容超出时显示垂直滚动条
+      .style('max-height', '100%');       // 限制最大高度，防止溢出
 
     right.append('xhtml:div')
       .style('position', 'absolute')
@@ -1529,11 +1546,22 @@ title.on('dblclick', (ev) => {
       .style('font-weight', '600')
       .style('color', '#6b7280')
       .style('user-select', 'none')
+      .style('z-index', '1') // 确保标签在媒体之上
       .text('Output')
 
-    if (hasMedia) {
-      if (isVideo) {
-        const v = right.append('xhtml:video')
+    // --- 【修改点 3：循环渲染所有媒体项】 ---
+  if (videoUrls.length > 0) {
+    const videoContainer = right.append('xhtml:div')
+      .style('width', '100%')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '4px')
+      .style('margin-top', '4px');
+    
+    videoUrls.forEach((url, index) => {
+      console.log(`${d.media.type} ${mediaUrl}`)
+        // 创建视频元素并获取DOM节点
+      const v = videoContainer.append('xhtml:video')
           .style('width', '100%')
           .style('height', '80px')
           .style('object-fit', 'contain')
@@ -1543,34 +1571,100 @@ title.on('dblclick', (ev) => {
           .on('mousedown', ev => ev.stopPropagation())
           .on('click', ev => {
             ev.stopPropagation()
-            emit('open-preview', mediaUrl, d.media.type)
+            emit('open-preview', url, 'video')
           })
         const el = v.node()
         el.autoplay = true
         el.loop = true
         el.muted = true
         el.playsInline = true
-        el.src = mediaUrl
-      } else {
-        right.append('xhtml:img')
-          .style('width', '100%')
-          .style('height', '80px')
-          .style('object-fit', 'contain')
-          .attr('src', mediaUrl)
-          .attr('alt', d.module_id || 'thumbnail')
+        el.src = url
+    })
+  }  
+
+  // 保留图片渲染逻辑（只渲染非视频的图片）
+  if (imageUrls.length > 0) {
+    const imgContainer = right.append('xhtml:div')
+      .style('width', '100%')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '4px')
+      .style('margin-top', '4px');
+    
+    imageUrls.forEach((url, index) => {
+        imgContainer.append('xhtml:img')
+          .style('width', 'auto')
+          .style('max-width', '100%') // 最大宽度不超过容器
+          .style('height', '100px')   // 固定高度，便于统一布局
+          .style('object-fit', 'contain') // 保持宽高比
+          .attr('src', url)
+          .attr('alt', `Output image ${index + 1}`)
           .on('mousedown', ev => ev.stopPropagation())
           .on('click', ev => {
-            ev.stopPropagation()
-            emit('open-preview', mediaUrl, d.media.type)
-          })
-      }
-    } else {
-      right.append('xhtml:div')
-        .style('font-size', '11px')
-        .style('color', '#9ca3af')
-        .style('user-select', 'none')
-        .text('(Output placeholder)')
-    }
+            ev.stopPropagation();
+            emit('open-preview', url, 'image');
+          });
+    })
+  }
+
+  // if (hasMedia) {
+  //   // 遍历我们刚刚创建的统一媒体列表
+  //   allMediaItems.forEach((mediaItem, index) => {
+  //     // 为每个媒体项创建一个容器，用于控制间距
+  //     const mediaContainer = right.append('xhtml:div')
+  //       .style('width', '100%')
+  //       .style('margin-bottom', '4px') // 媒体项之间的下边距
+  //       .style('display', 'flex')
+  //       .style('justify-content', 'center');
+
+  //     if (mediaItem.type === 'image') {
+  //       // 如果是图片，渲染 <img> 标签
+  //       console.log("img img img img img img")
+  //       mediaContainer.append('xhtml:img')
+  //         .style('width', 'auto')
+  //         .style('max-width', '100%') // 最大宽度不超过容器
+  //         .style('height', '100px')   // 固定高度，便于统一布局
+  //         .style('object-fit', 'contain') // 保持宽高比
+  //         .attr('src', mediaItem.url)
+  //         .attr('alt', `Output image ${index + 1}`)
+  //         .on('mousedown', ev => ev.stopPropagation())
+  //         .on('click', ev => {
+  //           ev.stopPropagation();
+  //           emit('open-preview', mediaItem.url, 'image');
+  //         });
+  //     } else if (mediaItem.type === 'video') {
+  //       // 如果是视频，渲染 <video> 标签
+  //       console.log("video video video video video")
+  //       const videoElement = mediaContainer.append('xhtml:video')
+  //         .style('width', 'auto')
+  //         .style('max-width', '100%') // 最大宽度不超过容器
+  //         .style('height', '100px')   // 固定高度
+  //         .attr('controls', true)     // 显示播放控制条
+  //         .attr('loop', true)         // 可选：设置为循环播放
+  //         .attr('muted', true)        // 可选：默认静音，避免突然播放声音
+  //         .attr('preload', 'metadata')// 预加载元数据（如时长、尺寸）
+  //         .on('mousedown', ev => ev.stopPropagation())
+  //         .on('click', ev => {
+  //           ev.stopPropagation();
+  //           // 点击视频时也触发预览
+  //           emit('open-preview', mediaItem.url, 'video');
+  //         });
+
+  //       // 为 <video> 标签添加 <source>
+  //       videoElement.append('xhtml:source')
+  //         .attr('src', mediaItem.url)
+  //         .attr('type', 'video/mp4'); // 假设视频都是 mp4 格式
+  //     }
+  //   });
+  // } else {
+  //   // 如果没有任何媒体，显示占位文本
+  //   right.append('xhtml:div')
+  //     .style('font-size', '11px')
+  //     .style('color', '#9ca3af')
+  //     .style('user-select', 'none')
+  //     .style('padding', '10px 0') // 增加内边距，让占位符更美观
+  //     .text('(No output yet)');
+  // }
 
     const dots = right.append('xhtml:div')
       .attr('class', 'dots-container')

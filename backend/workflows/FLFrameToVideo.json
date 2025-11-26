@@ -177,7 +177,7 @@
     "inputs": {
       "fps": 16,
       "images": [
-        "8",
+        "94",
         0
       ]
     },
@@ -277,6 +277,24 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "94": {
+    "inputs": {
+      "ckpt_name": "rife47.pth",
+      "clear_cache_after_n_frames": 10,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1,
+      "frames": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE VFI"
     }
   }
 }

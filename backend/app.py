@@ -25,7 +25,7 @@ app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # --- 模式开关 ----
-APP_MODE = os.getenv('APP_MODE', 'server') 
+APP_MODE = os.getenv('APP_MODE', 'local') 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
 
@@ -649,6 +649,8 @@ def create_node():
 
 
         # --- 动态修改工作流 ---
+        isVideo = (final_module_id in ['TextGenerateVideo', 'ImageGenerateVideo', 'FLFrameToVideo','CameraControl'])
+    
         # PROMPT
         prompt_positive_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Positive Prompt)")
         if prompt_positive_node_id and 'positive_prompt' in parameters:
@@ -665,7 +667,7 @@ def create_node():
                 workflow[size_node_id]["inputs"]["width"] = parameters['width']
             if 'height' in parameters:
                 workflow[size_node_id]["inputs"]["height"] = parameters['height']
-            if 'batch_size' in parameters and workflow != 'CameraControl':
+            if 'batch_size' in parameters and not isVideo:
                 workflow[size_node_id]["inputs"]["batch_size"] = parameters['batch_size']
             if 'length' in parameters:
                 workflow[size_node_id]["inputs"]["length"] = parameters['length']
@@ -673,11 +675,7 @@ def create_node():
                 workflow[size_node_id]["inputs"]["speed"] = parameters['speed']
             if 'camera_pose' in parameters:
                 workflow[size_node_id]["inputs"]["camera_pose"] = parameters['camera_pose']
-        # Camera Control batch_size
-        cameraSize_node_id = find_node_id_by_title(workflow, "WanCameraImageToVideo")
-        if cameraSize_node_id:
-            if 'batch_size' in parameters:
-                workflow[cameraSize_node_id]["inputs"]["batch_size"] = parameters['batch_size']
+       
         # RIFE
         rife_node_id = find_node_id_by_title(workflow,"RIFE VFI")
         if rife_node_id:
@@ -747,13 +745,31 @@ def create_node():
             if 'audio_seed' in parameters:
                 workflow[voice_node_id]["inputs"]["seed"] = parameters['audio_seed']
 
-    
         # --- 调用ComfyUI并等待结果 ---
         queued_prompt = queue_comfyui_prompt(workflow)
         prompt_id = queued_prompt['prompt_id']
         
         # 使用WebSocket等待并获取输出
         outputs = get_comfyui_outputs(prompt_id)
+        
+        batch_size = parameters.get('batch_size', 1)
+        toVideos = isVideo and batch_size > 1
+        
+        if ( toVideos ) :
+            for i in range(1, batch_size):
+                print(f"\n>>> 开始第 {i+1}/{batch_size} 批次生成")
+                
+                workflow[sampleradv_node_id]["inputs"]["noise_seed"] = random.randint(0, 999999999999999)
+                
+                # --- 【调用】当前批次的ComfyUI生成 ---
+                queued_prompt = queue_comfyui_prompt(workflow)
+                prompt_id = queued_prompt['prompt_id']
+                batch_outputs = get_comfyui_outputs(prompt_id)  # 单批生成的结果
+                
+                # --- 【合并】当前批次的输出到总结果 ---
+                outputs["images"].extend(batch_outputs.get("images", []))
+        
+       
 
     except (ValueError, FileNotFoundError, IOError) as e:
         print(f"处理节点创建请求时出错: {e}")
@@ -780,7 +796,6 @@ def create_node():
 
 
 # --- 【核心修改】视频拼接 API 接口 (使用 moviepy) ---
-@app.route('/api/stitch', methods=['POST'])
 @app.route('/api/stitch', methods=['POST'])
 def stitch_videos():
     data = request.get_json()

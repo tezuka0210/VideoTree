@@ -40,7 +40,7 @@
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
-      "title":"KSamplerAdvanced"
+      "title": "KSamplerAdvanced"
     }
   },
   "86": {
@@ -131,7 +131,7 @@
     "inputs": {
       "fps": 8,
       "images": [
-        "87",
+        "109",
         0
       ]
     },
@@ -200,7 +200,7 @@
   "101": {
     "inputs": {
       "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
-      "strength_model": 1.0000000000000002,
+      "strength_model": 1,
       "model": [
         "95",
         0
@@ -214,7 +214,7 @@
   "102": {
     "inputs": {
       "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
-      "strength_model": 1.0000000000000002,
+      "strength_model": 1,
       "model": [
         "96",
         0
@@ -227,7 +227,7 @@
   },
   "103": {
     "inputs": {
-      "shift": 5.000000000000001,
+      "shift": 5,
       "model": [
         "102",
         0
@@ -240,7 +240,7 @@
   },
   "104": {
     "inputs": {
-      "shift": 5.000000000000001,
+      "shift": 5,
       "model": [
         "101",
         0
@@ -256,7 +256,6 @@
       "filename_prefix": "video/ComfyUI",
       "format": "auto",
       "codec": "auto",
-      "video-preview": "",
       "video": [
         "94",
         0
@@ -265,6 +264,24 @@
     "class_type": "SaveVideo",
     "_meta": {
       "title": "保存视频"
+    }
+  },
+  "109": {
+    "inputs": {
+      "ckpt_name": "rife47.pth",
+      "clear_cache_after_n_frames": 10,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1,
+      "frames": [
+        "87",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE VFI"
     }
   }
 }
