@@ -182,7 +182,8 @@ export function renderTree(
   allNodesData,
   selectedIds,
   emit,           // (eventName, ...args) => void
-  workflowTypes   // 仍然用于右上角启动按钮的颜色
+  workflowTypes,   // 仍然用于右上角启动按钮的颜色
+  viewState = null
 ) {
   const wrapper = d3.select(svgElement)
   wrapper.html('')
@@ -223,6 +224,9 @@ export function renderTree(
       width = 60
       height = 60
     } else if (cardType === 'textFull') {
+      width = 260
+      height = 140
+    } else if (cardType === 'TextImage') {
       width = 260
       height = 140
     } else if (cardType === 'audio' || isAudioMedia) {
@@ -268,6 +272,8 @@ export function renderTree(
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet')
 
+  
+
   const defs = svg.append('defs')
   // 只保留一种灰色箭头
   defs.append('marker')
@@ -282,7 +288,10 @@ export function renderTree(
     .style('fill', defaultLinkColor)
     .style('stroke', 'none')
 
+  // 给 layoutGroup 添加 class 方便选择
   const layoutGroup = svg.append('g')
+    .attr('class', 'zoom-container'); // 新增 class 用于选择
+
   const linkGroup = layoutGroup.append('g').attr('class', 'links')
   const nodeGroup = layoutGroup.append('g').attr('class', 'nodes')
 
@@ -290,17 +299,28 @@ export function renderTree(
     .scaleExtent([0.1, 2.5])
     .on('zoom', (ev) => layoutGroup.attr('transform', ev.transform))
     .filter((ev) => {
-      const target = ev.target
-      return !(target && target.closest && target.closest('foreignObject'))
-    })
-  svg.call(zoom)
+      const target = ev.target;
+      return !(target && target.closest && target.closest('foreignObject'));
+    });
+  svg.call(zoom);
 
-  const graphWidth = g.graph().width || width
-  const graphHeight = g.graph().height || height
-  const s = Math.min(1, Math.min(width / graphWidth, height / graphHeight) * 0.9)
-  const tx = (width - graphWidth * s) / 2
-  const ty = (height - graphHeight * s) / 2
-  svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(s))
+  // 原初始缩放逻辑（仅在无保存状态时执行）
+  if (!viewState) {
+    const graphWidth = g.graph().width || width;
+    const graphHeight = g.graph().height || height;
+    const s = Math.min(1, Math.min(width / graphWidth, height / graphHeight) * 0.9);
+    const tx = (width - graphWidth * s) / 2;
+    const ty = (height - graphHeight * s) / 2;
+    svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(s));
+  } else {
+    // 恢复保存的视图状态
+    svg.call(
+      zoom.transform,
+      d3.zoomIdentity
+        .translate(viewState.x, viewState.y)
+        .scale(viewState.k)
+    );
+  }
 
   // 背景点击：取消选择
   const svgDom = svg.node()

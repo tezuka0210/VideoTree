@@ -8,6 +8,8 @@
 import { ref, watch, onMounted } from 'vue'
 import { workflowTypes } from '@/composables/useWorkflow'
 
+import * as d3 from 'd3'
+
 // 从 JS 版工具库导入
 import {
   renderTree,
@@ -105,12 +107,33 @@ watch(
 
     if (structureChanged) {
       console.log('[WorkflowTree] 节点结构变化，调用 renderTree');
+      let currentViewState = null;
+      if (svgContainer.value) {
+        const svg = d3.select(svgContainer.value);
+        // 选择 zoom-container 并检查是否存在
+        const zoomContainer = svg.select('.zoom-container');
+        if (!zoomContainer.empty()) { // 关键：检查元素是否存在
+          const transform = zoomContainer.attr('transform');
+          if (transform) {
+            const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+            const translateMatch = transform.match(/translate\(([^,]+),([^)]+)\)/);
+            if (scaleMatch && translateMatch) {
+              currentViewState = {
+                k: parseFloat(scaleMatch[1]),
+                x: parseFloat(translateMatch[1]),
+                y: parseFloat(translateMatch[2])
+              };
+            }
+          }
+        }
+      }
       renderTree(
         svgContainer.value,
         newNodes,
         props.selectedIds,
         graphEmit,
-        workflowTypes
+        workflowTypes,
+        currentViewState
       );
     } else {
       console.log('[WorkflowTree] 节点状态变化，调用 updateVisibility');
