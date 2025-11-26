@@ -818,9 +818,7 @@ title.on('dblclick', (ev) => {
    * 图文混排节点：左侧大文本，右侧图片/占位符
    */
   function renderTextImageNode(gEl, d, selectedIds, emit) {
-    // 1. 计算布局 (类似 IO 卡，稍微宽一点)
-    // 你可以在 renderTree 的高度计算里为 textImage 设置专门的宽高
-    // 比如 width = 320, height = 140
+    // 1. 计算布局 (类似 IO 卡)
     
     const fo = gEl.append('foreignObject')
       .attr('width', d.calculatedWidth)
@@ -914,23 +912,86 @@ title.on('dblclick', (ev) => {
       .style('position', 'relative')
       .style('overflow', 'hidden')
 
-    // 判断是否是占位符
+    // 判断是否有媒体内容
     const hasMedia = !!(d.media && d.media.rawPath)
     const mediaUrl = hasMedia ? d.media.url : ''
-    
-    
 
-    right.append('xhtml:div')
+    // 创建上传容器（居中显示）
+    const uploadContainer = right.append('xhtml:div')
+      .style('width', '80%')
+      .style('height', '80%')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('border', hasMedia ? 'none' : '2px dashed #d1d5db') // 无媒体时显示虚线边框
+      .style('border-radius', '4px')
+      .style('cursor', 'pointer')
+      .style('transition', 'border-color 0.2s')
+      .on('mouseenter', function() {
+        if (!hasMedia) d3.select(this).style('border-color', '#9ca3af')
+      })
+      .on('mouseleave', function() {
+        if (!hasMedia) d3.select(this).style('border-color', '#d1d5db')
+      })
+
+    // 如果有媒体，显示媒体内容
+    if (hasMedia) {
+      uploadContainer.append('xhtml:img')
+        .attr('src', mediaUrl)
+        .style('max-width', '100%')
+        .style('max-height', '100%')
+        .style('object-fit', 'contain') // 保持比例缩放
+    } else {
+      // 无媒体时显示加号和提示文字
+      const uploadContent = uploadContainer.append('xhtml:div')
+        .style('text-align', 'center')
+        .style('color', '#6b7280')
+
+      // 加号图标（使用大号字体模拟）
+      uploadContent.append('xhtml:div')
+        .style('font-size', '24px')
+        .style('line-height', '1')
+        .style('margin-bottom', '4px')
+        .text('+')
+
+      
+    }
+
+    // 添加实际的文件上传输入（隐藏但保持功能）
+    const fileInput = uploadContainer.append('xhtml:input')
+      .attr('type', 'file')
+      .attr('accept', 'image/*') // 只允许图片文件
       .style('position', 'absolute')
-      .style('top', '2px')
-      .style('left', '4px')
-      .style('font-size', '9px')
-      .style('font-weight', '600')
-      .style('color', '#6b7280')
-      .style('user-select', 'none')
-      .text('Click to upload')
+      .style('top', '0')
+      .style('left', '0')
+      .style('width', '100%')
+      .style('height', '100%')
+      .style('opacity', '0') // 隐藏输入框但保留点击区域
+      .style('cursor', 'pointer')
+      .on('change', function() {
+        const file = this.files?.[0]
+        if (file) {
+          // 触发上传逻辑（通过emit传递文件）
+          emit('upload-media', d.id, file)
+          // 清空输入值，避免重复选择同一文件不触发change事件
+          this.value = ''
+        }
+      })
+
+    // 点击容器时触发文件输入的点击事件
+    uploadContainer.on('click', () => {
+      fileInput.node().click()
+    })
     
     // ... (添加 addTooltip 等) ...
+    const toolbar = body.append('xhtml:div')
+      .style('flex-shrink', '0')
+      .style('padding', '4px 6px')
+      .style('display', 'flex')
+      .style('justify-content', 'flex-end')
+      .style('gap', '4px')
+
+    addTooltip(gEl, d)
   }
 
 

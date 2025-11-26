@@ -31,6 +31,7 @@
             @toggle-collapse="toggleNodeCollapse"
             @create-card="createCard"
             @refresh-node="handleRefreshNode"
+            @upload-media="updateNodeMedia"
           />
         </div>
 
@@ -74,7 +75,7 @@
       :initial-workflow-type="initialWorkflowTypeForPopover"
       @close="isGenerationPopoverOpen = false"
       @generate="handleGenerate"
-      @upload="handleFileUpload"
+      
     />
   </div>
 </template>
@@ -124,6 +125,7 @@ const {
   openPreview,
   closePreview,
   toggleNodeCollapse,
+  updateNodeMedia,
 } = useWorkflow()
 
 // ⭐ 把 AppNode[] → ViewNode[]（带 cardType/title/isInit 的视图节点）
@@ -170,7 +172,6 @@ async function onStitchRequest() {
  */
 const createCard = async (parentNode: AppNode, moduleId: string) => {
   console.log(`[App] 收到直接生成请求: Parent=${parentNode.id}, Module=${moduleId}`);
-
   // 1. (重要) 确保选中的父节点是 Init 节点
   // 因为 handleGenerate 默认使用 selectedParentIds
   selectedParentIds.value = [parentNode.id];
@@ -179,10 +180,8 @@ const createCard = async (parentNode: AppNode, moduleId: string) => {
   const defaultParams = {
     
   };
-
   // 3. 直接调用生成函数 (跳过 UI 弹窗)
   await handleGenerate(moduleId, defaultParams);
-  
   // 4. (可选) 生成完后清空选中
   selectedParentIds.value = []; 
 }
@@ -200,6 +199,8 @@ const handleRefreshNode = (nodeId: string, newModuleId: string) => {
     return node;
   });
 };
+
+
 
 const isGenerationPopoverOpen = ref(false)
 const initialModuleIdForPopover = ref<string | null>(null)

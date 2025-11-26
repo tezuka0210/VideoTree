@@ -268,7 +268,8 @@ export function useWorkflow() {
         media: media,
         linkColor: linkColor,
         _collapsed: false,
-        parameters:n.parameters
+        parameters:n.parameters,
+        assets:n.assets
       }
     })
 
@@ -309,6 +310,70 @@ function toggleNodeCollapse(nodeId: string) {
       showStatus('加载失败: ' + err.message)
     } finally {
       isLoadingTree.value = false
+    }
+  }
+
+  /** 更新现有节点的媒体资源（仅更新，不创建新节点） */
+  async function updateNodeMedia(nodeId: string, file: File) {
+    if (!nodeId || !file) return;
+
+    isGenerating.value = true;
+    showStatus(`正在更新节点媒体...`);
+
+    // 1. 上传文件到服务器
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      // 上传文件并指定目标节点ID
+      const uploadResponse = await fetch(
+        `/api/assets/upload?tree_id=1&target_node_id=${nodeId}`,
+        { method: 'POST', body: formData }
+      );
+
+      if (!uploadResponse.ok) {
+        const errText = await uploadResponse.text();
+        throw new Error(`文件上传失败: ${errText}`);
+      }
+
+      // 2. 提取上传后的媒体URL（从返回的树数据中获取）
+      const uploadResult = await uploadResponse.json();
+      // 直接查找目标节点（而非Upload节点，因为可能是更新现有节点）
+      const targetNode = uploadResult.nodes.find((n: any) => n.node_id === nodeId);
+      if (!targetNode || !targetNode.assets?.images?.[0]) {
+        throw new Error('未获取到上传的媒体信息');
+      }
+      const mediaUrl = targetNode.assets.images[0]; // 从目标节点的assets中获取URL
+
+      // 3. 调用PUT接口仅更新assets字段（移除media字段）
+      const updateResponse = await fetch(`/api/nodes/${nodeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module_id: 'TextImage',
+          assets: { 
+            ...targetNode.assets, // 保留原有assets结构，仅更新images
+            images: [mediaUrl] 
+          },
+          parameters: allNodes.value.find(n => n.id === nodeId)?.parameters // 保留原有参数
+        })
+      });
+
+      if (!updateResponse.ok) {
+        const errText = await updateResponse.text();
+        throw new Error(`节点更新失败: ${errText}`);
+      }
+
+      // 4. 刷新节点数据
+      const updatedTree = await updateResponse.json();
+      processTreeData(updatedTree.nodes, '节点媒体更新成功！');
+
+    } catch (error: any) {
+      console.error("更新节点媒体失败:", error);
+      alert(`更新失败: ${error.message}`);
+      showStatus('更新失败，请重试。');
+    } finally {
+      isGenerating.value = false;
     }
   }
 
@@ -618,5 +683,6 @@ function toggleNodeCollapse(nodeId: string) {
     openPreview,
     closePreview,
     toggleNodeCollapse,
+    updateNodeMedia,
   }
 }

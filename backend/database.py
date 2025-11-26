@@ -238,19 +238,30 @@ def get_tree_as_json(tree_id: int) -> dict | None:
         conn.close()
 
 # database.py
+# 修改 database.py 中的 update_node 函数
 def update_node(node_id: str, payload: dict):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        # 提取需要更新的字段，新增对 module_id 的处理
+        module_id = payload.get('module_id')  # 新增
         parameters_json = json.dumps(payload.get('parameters', {}))
         assets_json = json.dumps(payload.get('assets', {}))
-        media_json = json.dumps(payload.get('media', {}))  # 添加 media 字段处理
-        cursor.execute(
-            "UPDATE nodes SET parameters = ?, assets = ?, media = ? WHERE node_id = ?",
-            (parameters_json, assets_json, media_json, node_id)
-        )
+        
+        # 如果 payload 包含 module_id，则更新它；否则保留原有值
+        if module_id:
+            cursor.execute(
+                "UPDATE nodes SET module_id = ?, parameters = ?, assets = ? WHERE node_id = ?",
+                (module_id, parameters_json, assets_json, node_id)
+            )
+        else:
+            # 不修改 module_id 的情况
+            cursor.execute(
+                "UPDATE nodes SET parameters = ?, assets = ? WHERE node_id = ?",
+                (parameters_json, assets_json, node_id)
+            )
         conn.commit()
-        print(f"节点 {node_id} 已成功更新。")
+        print(f"节点 {node_id} 已成功更新（包括module_id）。")
     except sqlite3.Error as e:
         conn.rollback()
         print(f"更新节点 {node_id} 失败: {e}")

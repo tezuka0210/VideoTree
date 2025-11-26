@@ -32,7 +32,8 @@ const emit = defineEmits([
   'toggle-collapse',
   'rename-node',
   'update-node-parameters',
-  'refresh-node'
+  'refresh-node',
+  'upload-media',
 ])
 
 // 传给 lib 的 emit 适配器
@@ -85,14 +86,22 @@ watch(
         for (let i = 0; i < newNodes.length; i++) {
           const newNode = newNodes[i];
           const oldNode = oldNodes.find(n => n.id === newNode.id); // 按ID匹配旧节点
-          console.log(`old module_id:${oldNode.module_id}       new module_id:${newNode.module_id}`)
+          //console.log(`old module_id:${oldNode.module_id}       new module_id:${newNode.module_id}`)
           if (oldNode && newNode.module_id !== oldNode.module_id) {
+            structureChanged = true;
+            break;
+          }
+          const oldAssets = JSON.stringify(oldNode.assets || {});
+          const newAssets = JSON.stringify(newNode.assets || {});
+          console.log(`old module_id:${oldNode.assets}       new module_id:${newNode.assets}`)
+          if (oldAssets !== newAssets) {
             structureChanged = true;
             break;
           }
         }
       }
     }
+
 
     if (structureChanged) {
       console.log('[WorkflowTree] 节点结构变化，调用 renderTree');

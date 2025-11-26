@@ -299,54 +299,67 @@ def view_file():
 
 @app.route('/api/assets/upload', methods=['POST'])
 def upload_asset():
-    """API: 接收上传文件，保存到 input，创建 'Upload' 数据库节点，返回更新后的树。"""
-    if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
+    """API: 接收上传文件，保存到 input，更新指定节点的媒体信息，返回更新后的树。"""
+    # 1. 检查文件是否存在
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
     file = request.files['file']
-    if file.filename == '': return jsonify({"error": "No selected file"}), 400
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
 
-    # 从查询参数获取 tree_id 和可选的 parent_id
+    # 2. 获取必要参数（关键：获取要更新的目标节点ID）
     tree_id = request.args.get('tree_id', default=1, type=int)
-    parent_id = request.args.get('parent_id', default=None, type=str)
-    parent_ids = [parent_id] if parent_id else []
+    target_node_id = request.args.get('target_node_id')  # 新增：目标节点ID（要更新的原节点）
+    if not target_node_id:
+        return jsonify({"error": "缺少目标节点ID（target_node_id）"}), 400
 
     try:
-        # 1. 保存文件到 ComfyUI input 目录
+        # 3. 保存文件到 ComfyUI input 目录
         _, ext = os.path.splitext(file.filename)
-        # 使用UUID确保文件名唯一，保留原始扩展名
-        filename = f"{uuid.uuid4()}{ext}" 
+        filename = f"{uuid.uuid4()}{ext}"  # 用UUID确保文件名唯一
         filepath = os.path.join(COMFYUI_INPUT_PATH, filename)
         file.save(filepath)
-        print(f"    - 文件已上传并保存到ComfyUI的输入目录: {filepath}")
+        print(f"    - 文件已上传并保存到: {filepath}")
 
-        # 2. 构建 assets 字典 (注意 type='input')
+        # 4. 构建文件的访问URL
         asset_url = f"/view?filename={urllib.parse.quote_plus(filename)}&subfolder=&type=input"
-        assets = {"images": [asset_url]} # 假设上传的总是图片
+        
+        # 5. 从数据库获取目标节点，准备更新
+        target_node = database.get_node(target_node_id)  # 假设数据库有get_node方法
+        if not target_node:
+            raise Exception(f"目标节点 {target_node_id} 不存在")
 
-        # 3. 在数据库中创建 Upload 节点
-        new_node_id = database.add_node(
-            tree_id=tree_id,
-            parent_ids=parent_ids,
-            module_id="Upload", # 特定的模块ID
-            parameters={"original_filename": file.filename}, # 记录原始文件名
-            assets=assets,
-            status='completed' # 上传即完成
+        # 6. 更新节点的assets或media字段（根据前端需要选择）
+        # 方案A：更新assets字段（兼容原有生成节点的结构）
+        updated_assets = target_node.get('assets', {})
+        # 将新上传的文件添加到images列表（如果是视频可改为videos）
+        updated_assets['images'] = updated_assets.get('images', []) + [asset_url]
+
+        # 7. 调用数据库更新方法，更新目标节点
+        # 注意：这里使用update_node而不是add_node，避免创建新节点
+        database.update_node(
+            node_id=target_node_id,
+            payload={
+                "assets": updated_assets,  # 用方案A的assets
+                "parameters": target_node.get('parameters', {})  # 保留原有参数
+            }
         )
-        if not new_node_id:
-            raise Exception("创建 Upload 数据库节点失败")
 
-        # 4. 获取并返回更新后的树结构
+        # 8. 返回更新后的树结构
         updated_tree = database.get_tree_as_json(tree_id)
         if not updated_tree:
-             raise Exception("获取更新后的树失败")
+            raise Exception("获取更新后的树失败")
 
-        return jsonify(updated_tree), 201
+        return jsonify(updated_tree), 200  # 成功更新返回200
 
     except Exception as e:
-        print(f"处理上传并创建节点时出错: {e}")
-        # 尝试清理已保存的文件？(可选)
+        print(f"处理上传并更新节点时出错: {e}")
+        # 清理已保存的文件
         if 'filepath' in locals() and os.path.exists(filepath):
-            try: os.remove(filepath)
-            except OSError: pass
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
         return jsonify({"error": f"处理上传失败: {e}"}), 500
 
 
@@ -371,7 +384,7 @@ def update_node_media(node_id):
         return jsonify({"error": str(e)}), 500
 
 
-        
+
 @app.route('/api/trees/<int:tree_id>', methods=['GET'])
 def get_tree(tree_id):
     """API: 获取一棵树的完整结构，如果项目或根节点不存在，则自动创建。"""
