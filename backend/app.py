@@ -226,6 +226,15 @@ def _get_image_info_from_parent(parent_node_id):
             print(f"    - 错误: 文件复制失败: {e}")
             raise IOError(f"复制文件失败: {filename}")
 
+def encode_image_to_base64(path):
+    mime, _ = mimetypes.guess_type(path)
+    if not mime:
+        mime = "image/png"
+
+    with open(path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+
+    return f"data:{mime};base64,{encoded}"
 
 
 # --- 3. Flask API 路由定义 ---
@@ -322,15 +331,14 @@ def process_agent_request():
         filename = query_params.get('filename', [None])[0]  # 提取filename参数
 
         local_dir = "/home/zhengzy/comfyui/comfyui/input"
-        image_url = os.path.join(local_dir, filename)
-        with open(image_url, "rb") as f:
-            image_url = base64.b64encode(f.read()).decode("utf-8")
+        local_path = os.path.join(local_dir, filename)
+        image_base64 = encode_image_to_base64(local_path)
             
         # 2. 准备agent所需的状态
         mock_state = {
             "user_input": user_input,
             "intent": user_input,
-            "image_data": image_url,  # 传给master_agent的图片数据（URL格式）
+            "image_data": image_base64,  # 传给master_agent的图片数据（URL格式）
             "workflow_list": get_all_workflow_names(),
             "parent_workflow": workflow_context.get('current_workflow'),
             "selected_workflow": None
@@ -353,7 +361,7 @@ def process_agent_request():
         state_after_prompt = prompt_agent_node(current_state)
         current_state.update(state_after_prompt)
 
-
+        print(current_state.get('final_prompt'))
         # 4. 返回处理结果给前端
         return jsonify({
             "status": "success",

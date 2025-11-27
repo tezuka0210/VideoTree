@@ -1,20 +1,21 @@
 import json
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage,SystemMessage
 from langchain_openai import ChatOpenAI
 from .state import AgentState
 
 def master_agent_node(state: AgentState):
     print("--- Running Master Agent ---")
 
-    user_text = state.get("user_input", "")
     image_data = state.get("image_data", None)
+    print(image_data)
 
     # 1. Initialize LLM (GPT-4o is required for Image Vision)
     llm = ChatOpenAI(
         model="gpt-4o",
         temperature=0,
-        model_kwargs={"response_format": {"type": "json_object"}}
+        model_kwargs={"response_format":{"type": "json_object"}}
     )
+
 
     # 2. Construct the System Prompt
     system_prompt = """
@@ -36,21 +37,18 @@ def master_agent_node(state: AgentState):
     """
 
     # 3. Construct the User Message (Text + Image)
-    content_blocks = [{"type": "text", "text": f"System Instruction: {system_prompt}\n\nUser Input: {user_text}"}]
+    content_blocks = [{"type": "text", "text": state["user_input"]}]
 
     if image_data:
-        # Assuming image_data is a base64 string or URL
-        # If it's base64, header needs to be handled by frontend or here.
-        # For this example, we assume a standard URL or formatted data URI.
         content_blocks.append({
             "type": "image_url",
             "image_url": {"url": image_data}
         })
 
-    message = HumanMessage(content=content_blocks)
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=content_blocks)]
 
     # 4. Execute
-    response = llm.invoke([message])
+    response = llm.invoke(messages)
 
     # 5. Parse JSON
     try:
