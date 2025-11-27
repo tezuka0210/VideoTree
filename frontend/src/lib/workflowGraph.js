@@ -22,23 +22,40 @@ const NODE_COLORS = {
 
 // selection shadow color is same as category color, but used in box-shadow
 function getNodeCategory(node) {
-  const hasMedia = !!(node.media && node.media.rawPath)
-  const rawPath = hasMedia ? node.media.rawPath : ''
-  const mediaType = node.media && node.media.type
-
+  const hasIVMedia = !!(node.assets && node.assets.output && node.assets.output.images && node.assets.output.images.length > 0)
+  const hasAudioMedia = !!(node.assets && node.assets.output && node.assets.output.audio && node.assets.output.audio.length > 0)
+  const hasMedia = hasIVMedia || hasAudioMedia
+  const rawIVPath = hasIVMedia ? node.assets.output.images[0] : ''
+  const rawAudioPath = hasAudioMedia? node.assets.output.audio[0]:''
+  // 从路径推断媒体类型（因为原数据中没有 type 字段）
+  const mediaType = rawIVPath.includes('.png') || rawIVPath.includes('.jpg') || rawIVPath.includes('.jpeg') ? 'image' 
+    : rawIVPath.includes('.mp4') ? 'video' 
+    : rawAudioPath.includes('.mp3') || rawAudioPath.includes('.wav') ? 'audio' 
+    : ''
+  //console.log(`getNodeCategory,${mediaType}`)
   const isAudioMedia =
-    typeof rawPath === 'string' &&
-    (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio') || mediaType === 'audio')
+    typeof rawAudioPath === 'string' &&
+    (rawAudioPath.includes('.mp3') || rawAudioPath.includes('.wav') || rawAudioPath.includes('subfolder=audio') || mediaType === 'audio')
 
   const isVideoMedia =
-    typeof rawPath === 'string' &&
-    (rawPath.includes('.mp4') || rawPath.includes('subfolder=video') || mediaType === 'video')
+    typeof rawIVPath === 'string' &&
+    (rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') || mediaType === 'video')
 
   const isImageMedia = hasMedia && !isAudioMedia && !isVideoMedia
 
-  if (isAudioMedia) return 'audio'
-  if (isImageMedia) return 'image'
-  if (isVideoMedia) return 'video'
+  if (isAudioMedia) {
+    //console.log(`audio`)
+    return 'audio'
+  }
+  if (isImageMedia) {
+    //console.log(`image`)
+    return 'image'
+  }
+  if (isVideoMedia) {
+    //console.log(`video`)
+    return 'video'
+  }
+  //console.log(`aux`)
   return 'aux'
 }
 
@@ -123,19 +140,12 @@ export function getVisibleNodesAndLinks(allNodes) {
 
 /** 粗略推断当前“卡片类型” */
 function inferCardType(node) {
-  const hasMedia = !!(node.media && node.media.rawPath)
-  const promptText = (node.parameters) ? (node.parameters.positive_prompt || node.parameters.text) : null
-  const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
-
-  const rawPath = hasMedia ? node.media.rawPath : ''
-  const isAudioMedia = typeof rawPath === 'string' &&
-    (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio'))
 
   if (node.module_id === 'Init') return 'init'
   if (node.module_id === 'AddText') return 'textFull'
-  if (node.module_id === 'TextImage') return 'TextImage'
+  if (node.module_id === 'TextImage'|| node.module_id === 'Upload') return 'TextImage'
   if (node.module_id === 'AddWorkflow') return 'AddWorkflow'
-  if (node.module_id === 'TextToAudio' || isAudioMedia || (node.media && node.media.type === 'audio')) return 'audio'
+  if (node.module_id === 'TextToAudio' ) return 'audio'
   return 'io'
 }
 
@@ -263,14 +273,15 @@ export function renderTree(
     const cardType = inferCardType(node)
     const isInit = cardType === 'init'
 
-    const hasMedia = !!(node.media && node.media.rawPath)
-    const promptText = (node.parameters) ? (node.parameters.positive_prompt || node.parameters.text) : null
-    const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
-
-    const rawPath = hasMedia ? node.media.rawPath : ''
+    //console.log('节点完整数据:', node);
+    //console.log('assets 数据:', node.assets); // 
+    const hasMedia = !!(node.assets && node.assets.output && node.assets.output.images && node.assets.output.images.length > 0)
+    const rawPath = hasMedia ? node.assets.output.images[0] : ''
     const isAudioMedia = typeof rawPath === 'string' &&
       (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio'))
-
+    const promptText = (node.parameters) ? (node.parameters.positive_prompt || node.parameters.text) : null
+    const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
+    //console.log(`hasMedia:${hasMedia}`)
     let width, height
 
     if (isInit) {
@@ -988,9 +999,10 @@ title.on('dblclick', (ev) => {
       .style('overflow', 'hidden')
 
     // 判断是否有媒体内容
-    const hasMedia = !!(d.media && d.media.rawPath)
-    const mediaUrl = hasMedia ? d.media.url : ''
-
+    const hasMedia = !!(d.assets && d.assets.input && d.assets.input.images && d.assets.input.images.length > 0)
+    const mediaUrl = hasMedia ? d.assets.input.images : ''
+    console.log(`rendetTextImageNode ${mediaUrl}`)
+    
     // 创建上传容器（居中显示）
     const uploadContainer = right.append('xhtml:div')
       .style('width', '80%')
@@ -1088,7 +1100,7 @@ title.on('dblclick', (ev) => {
         const payload = {
           user_input: d.parameters?.positive_prompt || d.parameters?.text || '', // 节点文本内容
           node_id: d.id, // 当前节点ID
-          image_url: d.media?.url || '', // 补充图片URL（从节点媒体信息中获取）
+          image_url: mediaUrl || '',
           workflow_context: {
             current_workflow: d.module_id, // 当前使用的工作流
             parent_nodes: d.originalParents || [] // 父节点信息
@@ -1128,7 +1140,7 @@ title.on('dblclick', (ev) => {
    * 文本 + 音频节点（上下结构）
    */
   function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
-    const mediaUrl = d.media.url
+    const mediaUrl = d.assets.output.audio
     const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : ''
 
     const fo = gEl.append('foreignObject')
@@ -1349,7 +1361,8 @@ title.on('dblclick', (ev) => {
    * 左右 IO 卡：左输入，右输出（图片 / 视频 / 文本）
    */
   function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
-    const assets = d.assets || {};
+    /************ 记得改改改改改改**********/
+    const assets = d.assets.output || {};
     const allMedia = assets.images || [];
     // 获取图片和视频列表，如果不存在则为空数组
     const videoUrls = allMedia.filter(url => 
@@ -1362,17 +1375,15 @@ title.on('dblclick', (ev) => {
     // 筛选出所有图片URL（排除已识别为视频的）
     const imageUrls = allMedia.filter(url => !videoUrls.includes(url));
     // 判断是否有任何媒体可以显示
-    const hasMedia = allMedia.length > 0;
-    //const hasMedia = !!(d.media && d.media.rawPath)
-    const mediaUrl = hasMedia ? d.media.url : ''
-    const rawPath = hasMedia ? d.media.rawPath : ''
-    const mediaType = d.media && d.media.type
+    const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
+    console.log(`renderIONode ${hasMedia}`)
+    const mediaUrl = hasMedia ? d.assets.output.images : ''
+    const rawIVPath = hasMedia ? d.assets.output.images[0] : ''
+    const mediaType = d.assets.output && d.assets.output.type
     
-
-    const isVideo =
-      typeof rawPath === 'string' &&
-      (rawPath.includes('.mp4') || rawPath.includes('subfolder=video') || mediaType === 'video')
-
+    const isVideo =(rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') )
+    console.log(`renderIONode ${rawIVPath}           ${isVideo}`)
+    
     const isImage = hasMedia && !isVideo && mediaType !== 'audio'
     const canAddToStitch = hasMedia && (isImage || isVideo)
 
@@ -1668,7 +1679,6 @@ title.on('dblclick', (ev) => {
       .style('margin-top', '4px');
     
     videoUrls.forEach((url, index) => {
-      console.log(`${d.media.type} ${mediaUrl}`)
         // 创建视频元素并获取DOM节点
       const v = videoContainer.append('xhtml:video')
           .style('width', '100%')
@@ -1885,8 +1895,9 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
       .style('overflow', 'hidden')
 
     // 判断是否有媒体内容
-    const hasMedia = !!(d.media && d.media.rawPath)
-    const mediaUrl = hasMedia ? d.media.url : ''
+    const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
+    const mediaUrl = hasMedia ? d.assets.input.images : ''
+    console.log(`rendetAddWorkflowNode ${mediaUrl}`)
 
     // 创建上传容器（居中显示）
     const uploadContainer = right.append('xhtml:div')
@@ -2076,10 +2087,20 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
       return
     }
 
-    const hasMedia = !!(d.media && d.media.rawPath)
-    const rawPath = hasMedia ? d.media.rawPath : ''
-    const isAudioMedia = typeof rawPath === 'string' &&
-      (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio'))
+    const hasIVMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
+    const hasAudioMedia = !!(d.assets && d.assets.output && d.assets.output.audio && d.assets.output.audio.length > 0)
+    const hasMedia = hasIVMedia || hasAudioMedia
+    const rawIVPath = hasIVMedia ? d.assets.output.images[0] : ''
+    const rawAudioPath = hasAudioMedia? d.assets.output.audio[0]:''
+    // 从路径推断媒体类型（因为原数据中没有 type 字段）
+    const mediaType = rawIVPath.includes('.png') || rawIVPath.includes('.jpg') || rawIVPath.includes('.jpeg') ? 'image' 
+      : rawIVPath.includes('.mp4') ? 'video' 
+      : rawAudioPath.includes('.mp3') || rawAudioPath.includes('.wav') ? 'audio' 
+      : ''
+    //console.log(`getNodeCategory,${mediaType}`)
+    const isAudioMedia =
+      typeof rawAudioPath === 'string' &&
+      (rawAudioPath.includes('.mp3') || rawAudioPath.includes('.wav') || rawAudioPath.includes('subfolder=audio') || mediaType === 'audio')
 
     if (cardType === 'textFull') {
       console.log(`renderTree textFull`)

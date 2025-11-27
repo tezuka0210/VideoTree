@@ -44,10 +44,12 @@ def init_db():
             
             module_id TEXT NOT NULL,
             parameters TEXT,  -- 将作为JSON字符串存储
+            title TEXT NOT NULL,
             assets TEXT,      -- 将作为JSON字符串存储
             media TEXT,       -- 将作为JSON字符串存储
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            
             FOREIGN KEY (tree_id) REFERENCES Trees (tree_id)
         );
         ''')
@@ -90,7 +92,7 @@ def create_tree(name: str) -> int:
         conn.close()
 
 
-def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, parameters: dict, assets: dict = None, status: str = 'completed') -> str | None:
+def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, parameters: dict, title:str, assets: dict = None, status: str = 'completed') -> str | None:
     """
     向指定的树添加一个新节点。
     :param tree_id: 所属树的ID。
@@ -99,6 +101,7 @@ def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, paramet
     :param parameters: 节点使用的参数 (字典)。
     :param assets: 节点生成的资源信息 (字典，包含 images/videos 列表)。
     :param status: 节点状态
+    :param title: 节点标题
     :return: 新创建节点的 node_id，如果失败则返回 None。
     """
     new_node_id = str(uuid.uuid4())
@@ -111,9 +114,9 @@ def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, paramet
 
         # 1. 插入节点基本信息到 'nodes' 表
         cursor.execute(
-            """INSERT INTO nodes (node_id, tree_id, module_id, parameters, assets, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (new_node_id, tree_id, module_id, parameters_json, assets_json, status, created_at_dt)
+            """INSERT INTO nodes (node_id, tree_id, module_id, parameters, title, assets, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (new_node_id, tree_id, module_id, parameters_json, title, assets_json, status, created_at_dt)
         )
 
         # 2. 如果有父节点，插入关系到 'node_parents' 表
@@ -140,7 +143,7 @@ def get_node(node_id: str) -> dict | None:
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT node_id, tree_id, module_id, parameters, assets, status, created_at FROM nodes WHERE node_id = ?", (node_id,))
+        cursor.execute("SELECT node_id, tree_id, module_id, parameters, title, assets, status, created_at FROM nodes WHERE node_id = ?", (node_id,))
         node_row = cursor.fetchone()
 
         if node_row:
@@ -190,7 +193,7 @@ def get_tree_as_json(tree_id: int) -> dict | None:
 
         # 获取该树的所有节点
         cursor.execute("""
-            SELECT node_id, module_id, parameters, assets, status, created_at
+            SELECT node_id, module_id, parameters, title, assets, status, created_at
             FROM nodes
             WHERE tree_id = ?
             ORDER BY created_at ASC
@@ -237,31 +240,38 @@ def get_tree_as_json(tree_id: int) -> dict | None:
     finally:
         conn.close()
 
-# database.py
-# 修改 database.py 中的 update_node 函数
 def update_node(node_id: str, payload: dict):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # 提取需要更新的字段，新增对 module_id 的处理
-        module_id = payload.get('module_id')  # 新增
+        # 提取需要更新的字段
+        module_id = payload.get('module_id')
+        title = payload.get('title')  # 独立提取title，不依赖module_id
         parameters_json = json.dumps(payload.get('parameters', {}))
         assets_json = json.dumps(payload.get('assets', {}))
         
-        # 如果 payload 包含 module_id，则更新它；否则保留原有值
-        if module_id:
-            cursor.execute(
-                "UPDATE nodes SET module_id = ?, parameters = ?, assets = ? WHERE node_id = ?",
-                (module_id, parameters_json, assets_json, node_id)
-            )
-        else:
-            # 不修改 module_id 的情况
-            cursor.execute(
-                "UPDATE nodes SET parameters = ?, assets = ? WHERE node_id = ?",
-                (parameters_json, assets_json, node_id)
-            )
+        # 基础更新字段：parameters和assets是必传的，始终更新
+        update_fields = ["parameters = ?", "assets = ?"]
+        update_values = [parameters_json, assets_json]
+        
+        # 如果有module_id，加入更新字段
+        if module_id is not None:
+            update_fields.append("module_id = ?")
+            update_values.append(module_id)
+        
+        # 如果有title，加入更新字段（独立判断，与module_id无关）
+        if title is not None:
+            update_fields.append("title = ?")
+            update_values.append(title)
+        
+        # 拼接SQL语句
+        sql = f"UPDATE nodes SET {', '.join(update_fields)} WHERE node_id = ?"
+        update_values.append(node_id)  # 最后添加WHERE条件的node_id
+        
+        # 执行更新
+        cursor.execute(sql, tuple(update_values))
         conn.commit()
-        print(f"节点 {node_id} 已成功更新（包括module_id）。")
+        print(f"节点 {node_id} 已成功更新。")
     except sqlite3.Error as e:
         conn.rollback()
         print(f"更新节点 {node_id} 失败: {e}")

@@ -54,10 +54,16 @@ interface DbNode {
 
 // 原始 assets 字段 JSON 解析后的结构
 interface AssetDetails {
-  images?: string[];
-  videos?: string[];
-  audio?: string[];
-  // ... 其他可能的资产
+  input?: {          // 输入类型资源
+    images?: string[];
+    videos?: string[];
+    audio?: string[];
+  };
+  output?: {         // 输出类型资源
+    images?: string[];
+    videos?: string[];
+    audio?: string[];
+  };
 }
 
 // 媒体文件的统一结构
@@ -65,6 +71,7 @@ interface AssetMedia {
   rawPath: string; // 相对路径 (用于 API)
   url: string;     // 完整 URL (用于 <img> <video>)
   type: 'image' | 'video' | 'audio';
+  source: 'input' | 'output'; 
 }
 
 // 经过前端处理后，用于 D3 渲染和 App 内部使用的 Node 结构
@@ -75,7 +82,7 @@ export interface AppNode {
   module_id: string;
   created_at: string;
   status: string;
-  media: AssetMedia | null; // 处理后的第一个媒体文件
+  media: AssetMedia[] | null; // 处理后的第一个媒体文件
   // originalParents: string | string[] | null; // (可选) 保留原始父ID信息
   linkColor?:string;
   _collapsed?: boolean;
@@ -165,34 +172,9 @@ export function useWorkflow() {
     return assetsObject;
   }
 
-  /** 从解析后的 assets 对象中获取第一个媒体文件 */
-  function firstMediaFromAssets(assets: AssetDetails | null): { path: string; type: 'image' | 'video' |'audio'} | null {
-    if (!assets) return null;
-    // (v91 修复)
-    // 检查 .mp4，因为后端 可能把视频放进 images
-    const imgs = assets.images || [];
-    const vids = assets.videos || [];
-    const auds = assets.audio || [];
-    // (v91) 优先检查视频
-    if (Array.isArray(vids) && vids.length > 0) {
-      if (vids[0]) return { path: vids[0], type: 'video' };
-    }
-    // 检查音频
-    if (Array.isArray(auds) && auds.length > 0) {
-      if (auds[0]) return { path: auds[0], type: 'audio' };
-    }
-    // (v91) 其次检查图片
-    if (Array.isArray(imgs) && imgs.length > 0) {
-      if (imgs[0]) {
-        // (v91 关键逻辑) 检查这个 "image" 是不是 .mp4
-        const isVideo = (typeof imgs[0] === 'string') && (imgs[0].includes('.mp4') || imgs[0].includes('subfolder=video'));
-        return { path: imgs[0], type: isVideo ? 'video' : 'image' };
-      }
-    }
-    
-    return null;
-  }
-  
+
+ 
+
   /** 将相对路径转换为完整的 ComfyUI URL */
   function makeFullUrl(path: string | null): string | null {
     if (!path) return null
@@ -222,30 +204,73 @@ export function useWorkflow() {
    * D3 渲染由 WorkflowTree.vue 组件通过 watch(allNodes) 来触发。
    */
   function processTreeData(nodes: DbNode[], statusMessage: string) {
-    if (!nodes) {
-      console.error('接收到的节点数据无效:', nodes)
-      showStatus('错误：无法处理或渲染树数据。')
-      return
-    }
-    console.log('原始节点数据:', nodes); 
-
-    const root = nodes.find(n => n.parent_id === null)
-    rootNodeId.value = root ? root.node_id : null
-
-    // 将 DbNode 转换为 AppNode
+    if (!nodes) return;
     const processedNodes: AppNode[] = nodes.map(n => {
-       if (n.module_id === 'TextToAudio') { // 只打印音频节点，保持控制台干净
-        console.log('--- 正在检查音频节点 ---', n.assets);
+      const parsedAssets = parseAssetsField(n.assets);
+      const media: AssetMedia[] = [];
+
+      if (parsedAssets) {
+        // 辅助函数：根据路径判断媒体类型（优先于字段名）
+        const getMediaTypeByPath = (path: string): 'image' | 'video' | 'audio' => {
+          //console.log(`processTreedata ${path}`)
+          if (typeof path !== 'string') return 'image'; // 默认值
+          // 视频识别：.mp4 后缀或 video 子文件夹
+          if (path.includes('.mp4') || path.includes('subfolder=video')) {
+            //console.log(`video video video video video`)
+            return 'video';
+          }
+          // 音频识别：.mp3/.wav 后缀或 audio 子文件夹
+          if (path.includes('.mp3') || path.includes('.wav') || path.includes('subfolder=audio')) {
+            return 'audio';
+          }
+          // 其余视为图片
+          return 'image';
+        };
+
+        const processMediaGroup = (group: { images?: string[], videos?: string[], audio?: string[] }, source: 'input' | 'output') => {
+          if (!group) return;
+
+          // 处理图片字段（可能包含错误归类的视频）
+          group.images?.forEach(path => {
+            if (path) {
+              const type = getMediaTypeByPath(path); // 强制按路径判断
+              media.push({
+                rawPath: path,
+                url: makeFullUrl(path)!,
+                type: type,
+                source: source
+              });
+            }
+          });
+
+          // 处理视频字段（正常视频）
+          group.videos?.forEach(path => {
+            if (path) {
+              media.push({
+                rawPath: path,
+                url: makeFullUrl(path)!,
+                type: 'video',
+                source: source
+              });
+            }
+          });
+
+          // 处理音频字段（正常音频）
+          group.audio?.forEach(path => {
+            if (path) {
+              media.push({
+                rawPath: path,
+                url: makeFullUrl(path)!,
+                type: 'audio',
+                source: source
+              });
+            }
+          });
+        };
+
+        parsedAssets.input && processMediaGroup(parsedAssets.input, 'input');
+        parsedAssets.output && processMediaGroup(parsedAssets.output, 'output');
       }
-      const parsedAssets = parseAssetsField(n.assets)
-      const firstMedia = firstMediaFromAssets(parsedAssets)
-      const media = firstMedia
-        ? {
-          rawPath: firstMedia.path,
-          url: makeFullUrl(firstMedia.path)!, // 我们断言它非 null，因为 path 存在
-          type: firstMedia.type
-        }
-        : null
 
       // D3 树状图只支持单个父节点，我们取第一个
       //const firstParentId = Array.isArray(n.parent_id) ? n.parent_id[0] : n.parent_id
@@ -320,7 +345,7 @@ function toggleNodeCollapse(nodeId: string) {
     isGenerating.value = true;
     showStatus(`正在更新节点媒体...`);
 
-    // 1. 上传文件到服务器
+    // 1. 上传文件到服务器（后端已修改为存储到 input 下）
     const formData = new FormData();
     formData.append('file', file);
     
@@ -336,24 +361,26 @@ function toggleNodeCollapse(nodeId: string) {
         throw new Error(`文件上传失败: ${errText}`);
       }
 
-      // 2. 提取上传后的媒体URL（从返回的树数据中获取）
+      // 2. 提取上传后的媒体URL（从返回的树数据中获取，适配新结构）
       const uploadResult = await uploadResponse.json();
-      // 直接查找目标节点（而非Upload节点，因为可能是更新现有节点）
       const targetNode = uploadResult.nodes.find((n: any) => n.node_id === nodeId);
-      if (!targetNode || !targetNode.assets?.images?.[0]) {
-        throw new Error('未获取到上传的媒体信息');
+      if (!targetNode || !targetNode.assets?.input?.images?.[0]) {
+        throw new Error('未获取到上传的媒体信息（新结构适配失败）');
       }
-      const mediaUrl = targetNode.assets.images[0]; // 从目标节点的assets中获取URL
+      const mediaUrl = targetNode.assets.input.images[0]; // 从 input.images 中获取URL
 
-      // 3. 调用PUT接口仅更新assets字段（移除media字段）
+      // 3. 调用PUT接口更新assets字段（保持新的嵌套结构）
       const updateResponse = await fetch(`/api/nodes/${nodeId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           module_id: 'TextImage',
           assets: { 
-            ...targetNode.assets, // 保留原有assets结构，仅更新images
-            images: [mediaUrl] 
+            ...targetNode.assets, // 保留原有 assets 完整结构（包括 input/output）
+            input: {
+              ...targetNode.assets.input, // 保留 input 下其他字段（如果有）
+              images: [mediaUrl] // 更新 input.images 为最新上传的文件
+            }
           },
           parameters: allNodes.value.find(n => n.id === nodeId)?.parameters // 保留原有参数
         })
@@ -364,7 +391,7 @@ function toggleNodeCollapse(nodeId: string) {
         throw new Error(`节点更新失败: ${errText}`);
       }
 
-      // 4. 刷新节点数据
+      // 4. 刷新节点数据（processTreeData 会自动处理 media 数组）
       const updatedTree = await updateResponse.json();
       processTreeData(updatedTree.nodes, '节点媒体更新成功！');
 
@@ -403,12 +430,7 @@ function toggleNodeCollapse(nodeId: string) {
       const updatedTree: { nodes: DbNode[] } = await response.json() // 后端返回更新后的树
       processTreeData(updatedTree.nodes, '上传成功！新节点已添加到历史树。')
 
-      // (可选) 自动选中新节点
-      // const newUploadNode = findLatestUploadNode(updatedTree.nodes);
-      // if (newUploadNode) {
-      //   selectedParentIds.length = 0; // 清空
-      //   selectedParentIds.push(newUploadNode.node_id); // 选中
-      // }
+      
     } catch (error: any) {
       console.error("处理上传失败:", error)
       alert(`上传失败: ${error.message}`)
@@ -427,10 +449,6 @@ function toggleNodeCollapse(nodeId: string) {
     try {
       let parentIds = [...selectedParentIds.value] // 复制
       if (parentIds.length === 0 && allNodes.value.length > 0 && rootNodeId.value) {
-        // (策略) 如果未选择，自动使用根节点 (如果存在)
-        // parentIds.push(rootNodeId.value)
-        // (或者) 策略：未选择时，创建新的根节点
-        // parentIds = []
       }
       // (校验) 可以在这里添加原版的校验逻辑
       if ((moduleId === 'ImageGenerateImage_Basic' || moduleId === 'ImageGenerateVideo') && parentIds.length === 0) {
@@ -518,54 +536,76 @@ function toggleNodeCollapse(nodeId: string) {
 
   /** (Action) 添加一个片段到“运输带” (由 WorkflowTree.vue 调用) */
   async function addClipToStitch(node: AppNode, type: 'image' | 'video' | 'audio') {
-    if (!node.media || !node.media.rawPath) return
+    // 1. 检查 media 数组是否存在且不为空
+    if (!node.media || node.media.length === 0) {
+      console.warn(`[addClipToStitch] 节点 ${node.id} 没有可添加的媒体。`);
+      return;
+    }
+    //console.log(`addClipToStitch:${node.media}`)
+    // 2. 从 media 数组中查找我们想要的媒体
+    //    这里我们优先选择 'output' 类型的媒体
+    const targetMedia = node.media.find(media => media.source === 'output');
 
-    console.log(`[addClipToStitch] 接收到类型：${type}`)
+    // 3. 如果没有找到 output 媒体，可以选择第一个，或者直接返回
+    if (!targetMedia) {
+      console.warn(`[addClipToStitch] 节点 ${node.id} 没有找到 'output' 类型的媒体，将使用第一个可用媒体。`);
+      // 或者直接 return; 如果必须要有 output 媒体的话
+      // return; 
+    }
+    
+    // 如果连第一个都没有（理论上不会发生）
+    if (!targetMedia) {
+      console.error(`[addClipToStitch] 节点 ${node.id} 媒体数组为空或无效。`);
+      return;
+    }
+
+    console.log(`[addClipToStitch] 接收到类型：${type}，将添加媒体:`, targetMedia);
+
     try {
+      // 注意：下面的代码都从 targetMedia 获取信息，而不是 node.media
       if (type === 'audio') {
-          const audioDuration = await getVideoDuration(node.media!.url)
+        const audioDuration = await getVideoDuration(targetMedia.url);
 
-          // ✅ 优先使用参数里保存的波形图路径（示例字段名：waveform_image）
-          const waveformPath =
-            (node.parameters && (node.parameters as any).waveform_image)
-              ? (node.parameters as any).waveform_image
-              : node.media!.rawPath  // 如果没有，就退回音频本身（至少不会报错）
+        const waveformPath =
+          (node.parameters && (node.parameters as any).waveform_image)
+            ? (node.parameters as any).waveform_image
+            : targetMedia.rawPath;
 
-          const waveformUrl = makeFullUrl(waveformPath)!
+        const waveformUrl = makeFullUrl(waveformPath)!
 
-          bufferClips.push({
-            nodeId: node.id,
-            mediaPath: node.media!.rawPath,
-            thumbnailUrl: waveformUrl,   // ✅ 现在是波形图 URL
-            type: 'audio',
-            duration: audioDuration,
-          })
-
-          console.log(`[addClipToStitch] 已推入 bufferClips (audio)，当前数量:`, bufferClips.length)
-        } else if (type === 'video') {
-        const videoDuration = await getVideoDuration(node.media.url)
         bufferClips.push({
           nodeId: node.id,
-          mediaPath: node.media.rawPath,
-          thumbnailUrl: node.media.url,
+          mediaPath: targetMedia.rawPath,
+          thumbnailUrl: waveformUrl,
+          type: 'audio',
+          duration: audioDuration,
+        });
+
+      } else if (type === 'video') {
+        console.log(`video来了`)
+        const videoDuration = await getVideoDuration(targetMedia.url);
+        bufferClips.push({
+          nodeId: node.id,
+          mediaPath: targetMedia.rawPath,
+          thumbnailUrl: targetMedia.url,
           type: 'video',
           duration: videoDuration,
-        })
-        console.log(`[addClipToStitch] 已推入 bufferClips (video)，当前数量:`, bufferClips.length)
-      } else {
-        // image：固定 3s
+        });
+
+      } else { // image
         bufferClips.push({
           nodeId: node.id,
-          mediaPath: node.media.rawPath,
-          thumbnailUrl: node.media.url,
+          mediaPath: targetMedia.rawPath,
+          thumbnailUrl: targetMedia.url,
           type: 'image',
           duration: 3.0,
-        })
-        console.log(`[addClipToStitch] 已推入 bufferClips (image)，当前数量:`, bufferClips.length)
+        });
       }
+      console.log(`[addClipToStitch] 已推入 bufferClips (${type})，当前数量:`, bufferClips.length);
+
     } catch (error: any) {
-      console.error('添加片段到 bufferClips 时出错:', error)
-      alert('无法加载媒体元数据，添加失败。')
+      console.error('添加片段到 bufferClips 时出错:', error);
+      alert('无法加载媒体元数据，添加失败。');
     }
   }
 

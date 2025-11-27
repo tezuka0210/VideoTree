@@ -56,7 +56,7 @@ def master_agent_node(state: AgentState):
     except json.JSONDecodeError:
         print("❌ Master Agent: JSON Parse Error")
         parsed_data = {
-            "intent": user_text,
+            "intent": user_input,
             "entities": [],
             "style": "General",
             "image_caption": ""

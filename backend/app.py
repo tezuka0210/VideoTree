@@ -325,6 +325,12 @@ def process_agent_request():
         node_id = data.get('node_id', '')
         image_url = data.get('image_url', '')
         workflow_context = data.get('workflow_context', {})
+
+        # 处理 image_url 可能是数组的情况
+        if isinstance(image_url, list) and len(image_url) > 0:
+            image_url = image_url[0]  # 取第一个 URL
+        elif not isinstance(image_url, str):
+            image_url = ''  # 无效类型时设为空
         
         parsed_url = urllib.parse.urlparse(image_url)
         query_params = urllib.parse.parse_qs(parsed_url.query)
@@ -406,18 +412,29 @@ def upload_asset():
         if not target_node:
             raise Exception(f"目标节点 {target_node_id} 不存在")
 
-        # 6. 更新节点的assets或media字段（根据前端需要选择）
-        # 方案A：更新assets字段（兼容原有生成节点的结构）
+        # 6. 更新assets字段（兼容原有生成节点的结构）
         updated_assets = target_node.get('assets', {})
-        # 将新上传的文件添加到images列表（如果是视频可改为videos）
-        updated_assets['images'] = updated_assets.get('images', []) + [asset_url]
+        # 初始化 input 分类（如果不存在）
+        updated_assets['input'] = updated_assets.get('input', {})
+        # 根据文件类型判断存入 input 下的 images/videos/audio
+        if ext.lower() in ['.jpg', '.jpeg', '.png', '.gif']:
+            # 图片类型
+            updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
+        elif ext.lower() in ['.mp4', '.mov', '.avi', '.webm']:
+            # 视频类型
+            updated_assets['input']['videos'] = updated_assets['input'].get('videos', []) + [asset_url]
+        elif ext.lower() in ['.mp3', '.wav', '.flac', '.ogg']:
+            # 音频类型
+            updated_assets['input']['audio'] = updated_assets['input'].get('audio', []) + [asset_url]
+        else:
+            # 未知类型默认存到 images（可根据需求调整）
+            updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
 
         # 7. 调用数据库更新方法，更新目标节点
-        # 注意：这里使用update_node而不是add_node，避免创建新节点
         database.update_node(
             node_id=target_node_id,
             payload={
-                "assets": updated_assets,  # 用方案A的assets
+                "assets": updated_assets,  # 嵌套结构的 assets
                 "parameters": target_node.get('parameters', {})  # 保留原有参数
             }
         )
@@ -546,14 +563,17 @@ def create_node():
 
             # 构建假的 asset URL
             asset_url = f"/view?filename={urllib.parse.quote_plus(fake_filename)}&subfolder={urllib.parse.quote_plus(subfolder)}&type=output"
-            outputs = {"images": [], "videos": [], "audio": []}
+            outputs = {
+            "input": {"images": [], "videos": [], "audio": []},
+            "output": {"images": [], "videos": [], "audio": []}
+            }
 
             if subfolder == 'video':
-                outputs["videos"].append(asset_url)
+                outputs["output"]["videos"].append(asset_url)
             elif subfolder == 'audio':
-                outputs["audio"].append(asset_url)
+                outputs["output"]["audio"].append(asset_url)
             else: 
-                outputs["images"].append(asset_url)
+                outputs["output"]["images"].append(asset_url)
 
             # 像真实生成一样，将节点添加到数据库
             new_node_id = database.add_node(
@@ -562,6 +582,7 @@ def create_node():
                 module_id=module_id_from_frontend,
                 parameters=parameters,
                 assets=outputs,
+                title=module_id_from_frontend,
                 status='completed'
             )
             if not new_node_id:
@@ -614,6 +635,7 @@ def create_node():
                 parent_ids=parent_ids,
                 module_id=final_module_id,
                 parameters=parameters,
+                title='AddText',
                 assets={}, # 没有媒体资源
                 status='completed'
             )
@@ -632,6 +654,7 @@ def create_node():
                 parent_ids=parent_ids,
                 module_id=final_module_id,
                 parameters=parameters,
+                title='AddWorkflow',
                 assets={}, # 没有媒体资源
                 status='completed'
             )
@@ -872,13 +895,17 @@ def create_node():
         print(f"执行 ComfyUI 工作流或数据库操作时发生未知错误: {e}")
         return jsonify({"error": "执行工作流时发生内部错误。"}), 500
 
+    assets_with_output = {
+        "output": outputs
+    }
+
     # --- 在数据库中记录新节点 ---
     new_node_id = database.add_node(
         tree_id=tree_id,
         parent_ids=parent_ids, # 传递原始的父节点列表
         module_id=final_module_id, # 保存实际使用的模块ID
         parameters=parameters, # 保存前端传入的原始参数
-        assets=outputs,
+        assets=assets_with_output,
         status='completed' # 假设执行成功
     )
     if not new_node_id:
