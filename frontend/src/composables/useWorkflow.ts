@@ -338,51 +338,46 @@ function toggleNodeCollapse(nodeId: string) {
     }
   }
 
-  /** 更新现有节点的媒体资源（仅更新，不创建新节点） */
+  /** 更新现有节点的媒体资源（支持多文件） */
   async function updateNodeMedia(nodeId: string, file: File) {
     if (!nodeId || !file) return;
 
     isGenerating.value = true;
     showStatus(`正在更新节点媒体...`);
 
-    // 1. 上传文件到服务器（后端已修改为存储到 input 下）
     const formData = new FormData();
-    formData.append('file', file);
+    // 确保文件正确添加到FormData，参数名使用后端预期的"file"
+    formData.append('file', file, file.name); // 显式指定文件名，增强兼容性
     
     try {
-      // 上传文件并指定目标节点ID
       const uploadResponse = await fetch(
         `/api/assets/upload?tree_id=1&target_node_id=${nodeId}`,
-        { method: 'POST', body: formData }
+        { 
+          method: 'POST', 
+          body: formData,
+          // 不要手动设置Content-Type，浏览器会自动添加正确的multipart/form-data类型及边界
+        }
       );
-
       if (!uploadResponse.ok) {
         const errText = await uploadResponse.text();
         throw new Error(`文件上传失败: ${errText}`);
       }
 
-      // 2. 提取上传后的媒体URL（从返回的树数据中获取，适配新结构）
+      // 2. 提取上传后的媒体URL
       const uploadResult = await uploadResponse.json();
       const targetNode = uploadResult.nodes.find((n: any) => n.node_id === nodeId);
-      if (!targetNode || !targetNode.assets?.input?.images?.[0]) {
-        throw new Error('未获取到上传的媒体信息（新结构适配失败）');
+      if (!targetNode || !targetNode.assets?.input) {
+        throw new Error('未获取到上传的媒体信息');
       }
-      const mediaUrl = targetNode.assets.input.images[0]; // 从 input.images 中获取URL
 
-      // 3. 调用PUT接口更新assets字段（保持新的嵌套结构）
+      // 3. 调用PUT接口更新assets字段（保留所有类型的媒体）
       const updateResponse = await fetch(`/api/nodes/${nodeId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           module_id: 'TextImage',
-          assets: { 
-            ...targetNode.assets, // 保留原有 assets 完整结构（包括 input/output）
-            input: {
-              ...targetNode.assets.input, // 保留 input 下其他字段（如果有）
-              images: [mediaUrl] // 更新 input.images 为最新上传的文件
-            }
-          },
-          parameters: allNodes.value.find(n => n.id === nodeId)?.parameters // 保留原有参数
+          assets: targetNode.assets, // 直接使用后端返回的完整assets结构
+          parameters: allNodes.value.find(n => n.id === nodeId)?.parameters
         })
       });
 
@@ -391,7 +386,7 @@ function toggleNodeCollapse(nodeId: string) {
         throw new Error(`节点更新失败: ${errText}`);
       }
 
-      // 4. 刷新节点数据（processTreeData 会自动处理 media 数组）
+      // 4. 刷新节点数据
       const updatedTree = await updateResponse.json();
       processTreeData(updatedTree.nodes, '节点媒体更新成功！');
 

@@ -393,78 +393,86 @@ def process_agent_request():
 
 @app.route('/api/assets/upload', methods=['POST'])
 def upload_asset():
-    """API: 接收上传文件，保存到 input，更新指定节点的媒体信息，返回更新后的树。"""
-    # 1. 检查文件是否存在
+    """API: 接收上传文件（支持多文件），保存到 input，更新指定节点的媒体信息，返回更新后的树。"""
+    
+    # 1. 检查文件是否存在（支持多文件）
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+    files = request.files.getlist('file')  # 获取所有文件
+    if not files or all(file.filename == '' for file in files):
+        return jsonify({"error": "No selected files"}), 400  # 检查是否有有效文件
 
-    # 2. 获取必要参数（关键：获取要更新的目标节点ID）
+    # 2. 获取必要参数
     tree_id = request.args.get('tree_id', default=1, type=int)
-    target_node_id = request.args.get('target_node_id')  # 新增：目标节点ID（要更新的原节点）
+    target_node_id = request.args.get('target_node_id')
     if not target_node_id:
         return jsonify({"error": "缺少目标节点ID（target_node_id）"}), 400
 
     try:
-        # 3. 保存文件到 ComfyUI input 目录
-        _, ext = os.path.splitext(file.filename)
-        filename = f"{uuid.uuid4()}{ext}"  # 用UUID确保文件名唯一
-        filepath = os.path.join(COMFYUI_INPUT_PATH, filename)
-        file.save(filepath)
-        print(f"    - 文件已上传并保存到: {filepath}")
+        # 3. 批量保存文件到 ComfyUI input 目录
+        asset_urls = []  # 存储 (URL, 扩展名)
+        for file in files:
+            _, ext = os.path.splitext(file.filename)
+            filename = f"{uuid.uuid4()}{ext}"  # 唯一文件名
+            filepath = os.path.join(COMFYUI_INPUT_PATH, filename)
+            file.save(filepath)
+            print(f"    - 文件已上传并保存到: {filepath}")
 
-        # 4. 构建文件的访问URL
-        asset_url = f"/view?filename={urllib.parse.quote_plus(filename)}&subfolder=&type=input"
-        
-        # 5. 从数据库获取目标节点，准备更新
-        target_node = database.get_node(target_node_id)  # 假设数据库有get_node方法
+            # 4. 构建文件访问URL
+            asset_url = f"/view?filename={urllib.parse.quote_plus(filename)}&subfolder=&type=input"
+            asset_urls.append((asset_url, ext.lower()))
+
+        # 5. 获取目标节点
+        target_node = database.get_node(target_node_id)
         if not target_node:
             raise Exception(f"目标节点 {target_node_id} 不存在")
 
-        # 6. 更新assets字段（兼容原有生成节点的结构）
+        # 6. 批量更新assets字段
         updated_assets = target_node.get('assets', {})
-        # 初始化 input 分类（如果不存在）
-        updated_assets['input'] = updated_assets.get('input', {})
-        # 根据文件类型判断存入 input 下的 images/videos/audio
-        if ext.lower() in ['.jpg', '.jpeg', '.png', '.gif']:
-            # 图片类型
-            updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
-        elif ext.lower() in ['.mp4', '.mov', '.avi', '.webm']:
-            # 视频类型
-            updated_assets['input']['videos'] = updated_assets['input'].get('videos', []) + [asset_url]
-        elif ext.lower() in ['.mp3', '.wav', '.flac', '.ogg']:
-            # 音频类型
-            updated_assets['input']['audio'] = updated_assets['input'].get('audio', []) + [asset_url]
-        else:
-            # 未知类型默认存到 images（可根据需求调整）
-            updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
+        updated_assets['input'] = updated_assets.get('input', {})  # 初始化input
 
-        # 7. 调用数据库更新方法，更新目标节点
+        # 按文件类型分类添加
+        for asset_url, ext in asset_urls:
+            if ext in ['.jpg', '.jpeg', '.png', '.gif']:
+                updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
+            elif ext in ['.mp4', '.mov', '.avi', '.webm']:
+                updated_assets['input']['videos'] = updated_assets['input'].get('videos', []) + [asset_url]
+            elif ext in ['.mp3', '.wav', '.flac', '.ogg']:
+                updated_assets['input']['audio'] = updated_assets['input'].get('audio', []) + [asset_url]
+            else:
+                updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
+
+        # 7. 更新数据库
         database.update_node(
             node_id=target_node_id,
             payload={
-                "assets": updated_assets,  # 嵌套结构的 assets
-                "parameters": target_node.get('parameters', {})  # 保留原有参数
+                "assets": updated_assets,
+                "parameters": target_node.get('parameters', {})
             }
         )
 
-        # 8. 返回更新后的树结构
+        # 8. 返回更新后的树
         updated_tree = database.get_tree_as_json(tree_id)
         if not updated_tree:
             raise Exception("获取更新后的树失败")
 
-        return jsonify(updated_tree), 200  # 成功更新返回200
+        return jsonify(updated_tree), 200
 
     except Exception as e:
         print(f"处理上传并更新节点时出错: {e}")
         # 清理已保存的文件
-        if 'filepath' in locals() and os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-            except OSError:
-                pass
+        if 'asset_urls' in locals():
+            for asset_url, ext in asset_urls:
+                parsed = urllib.parse.urlparse(asset_url)
+                query_params = urllib.parse.parse_qs(parsed.query)
+                filename = query_params.get('filename', [None])[0]
+                if filename:
+                    filepath = os.path.join(COMFYUI_INPUT_PATH, urllib.parse.unquote_plus(filename))
+                    if os.path.exists(filepath):
+                        try:
+                            os.remove(filepath)
+                        except OSError:
+                            pass
         return jsonify({"error": f"处理上传失败: {e}"}), 500
 
 

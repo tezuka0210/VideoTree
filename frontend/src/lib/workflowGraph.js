@@ -978,6 +978,7 @@ title.on('dblclick', (ev) => {
       .style('display', 'flex')
       .style('align-items', 'center')
       .style('justify-content', 'center')
+      .style('gap', '8px') 
       .style('border', hasMedia ? 'none' : '2px dashed #d1d5db') // 无媒体时显示虚线边框
       .style('border-radius', '4px')
       .style('cursor', 'pointer')
@@ -991,11 +992,14 @@ title.on('dblclick', (ev) => {
 
     // 如果有媒体，显示媒体内容
     if (hasMedia) {
+      mediaUrl.slice(0, 2).forEach(imgUrl => {
       uploadContainer.append('xhtml:img')
-        .attr('src', mediaUrl)
-        .style('max-width', '100%')
+        .attr('src', imgUrl)
+        .style('max-width', '50%') // 每张图占容器一半宽度
         .style('max-height', '100%')
-        .style('object-fit', 'contain') // 保持比例缩放
+        .style('object-fit', 'contain')
+        .style('border-radius', '4px'); // 可选：添加边框圆角
+  });
     } else {
       // 无媒体时显示加号和提示文字
       const uploadContent = uploadContainer.append('xhtml:div')
@@ -1016,6 +1020,7 @@ title.on('dblclick', (ev) => {
     const fileInput = uploadContainer.append('xhtml:input')
       .attr('type', 'file')
       .attr('accept', 'image/*') // 只允许图片文件
+      .attr('multiple', true) 
       .style('position', 'absolute')
       .style('top', '0')
       .style('left', '0')
@@ -1023,13 +1028,14 @@ title.on('dblclick', (ev) => {
       .style('height', '100%')
       .style('opacity', '0') // 隐藏输入框但保留点击区域
       .style('cursor', 'pointer')
+      // 修改后：处理多个文件（最多2个）
       .on('change', function() {
-        const file = this.files?.[0]
+        const file = this.files && this.files.length > 0 ? this.files[0] : null;
         if (file) {
-          // 触发上传逻辑（通过emit传递文件）
-          emit('upload-media', d.id, file)
-          // 清空输入值，避免重复选择同一文件不触发change事件
-          this.value = ''
+          emit('upload-media', d.id, file);
+          this.value = ''; // 清空输入，允许重复选择同一文件
+        } else {
+          console.warn('未选择有效文件');
         }
       })
 
