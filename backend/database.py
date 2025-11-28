@@ -92,7 +92,7 @@ def create_tree(name: str) -> int:
         conn.close()
 
 
-def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, parameters: dict, title:str, assets: dict = None, status: str = 'completed') -> str | None:
+def add_node(node_id: str,tree_id: int, parent_ids: list[str] | None, module_id: str, parameters: dict, title:str, assets: dict = None, status: str = 'completed') -> str | None:
     """
     向指定的树添加一个新节点。
     :param tree_id: 所属树的ID。
@@ -104,7 +104,7 @@ def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, paramet
     :param title: 节点标题
     :return: 新创建节点的 node_id，如果失败则返回 None。
     """
-    new_node_id = str(uuid.uuid4())
+    #new_node_id = str(uuid.uuid4())
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -116,12 +116,12 @@ def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, paramet
         cursor.execute(
             """INSERT INTO nodes (node_id, tree_id, module_id, parameters, title, assets, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (new_node_id, tree_id, module_id, parameters_json, title, assets_json, status, created_at_dt)
+            (node_id, tree_id, module_id, parameters_json, title, assets_json, status, created_at_dt)
         )
 
         # 2. 如果有父节点，插入关系到 'node_parents' 表
         if parent_ids:
-            parent_data = [(new_node_id, parent_id) for parent_id in parent_ids if parent_id] # 确保 parent_id 有效
+            parent_data = [(node_id, parent_id) for parent_id in parent_ids if parent_id] # 确保 parent_id 有效
             if parent_data:
                 cursor.executemany(
                     "INSERT INTO node_parents (child_node_id, parent_node_id) VALUES (?, ?)",
@@ -129,8 +129,8 @@ def add_node(tree_id: int, parent_ids: list[str] | None, module_id: str, paramet
                 )
 
         conn.commit()
-        print(f"    - 成功添加节点 {new_node_id} (父节点: {parent_ids}) 到数据库。")
-        return new_node_id
+        print(f"    - 成功添加节点 {node_id} (父节点: {parent_ids}) 到数据库。")
+        return node_id
     except sqlite3.Error as e:
         conn.rollback() # 出错时回滚
         print(f"添加节点失败: {e}")
@@ -249,6 +249,7 @@ def update_node(node_id: str, payload: dict):
         title = payload.get('title')  # 独立提取title，不依赖module_id
         parameters_json = json.dumps(payload.get('parameters', {}))
         assets_json = json.dumps(payload.get('assets', {}))
+        status = payload.get('status')
         
         # 基础更新字段：parameters和assets是必传的，始终更新
         update_fields = ["parameters = ?", "assets = ?"]
@@ -263,7 +264,9 @@ def update_node(node_id: str, payload: dict):
         if title is not None:
             update_fields.append("title = ?")
             update_values.append(title)
-        
+        if status is not None:
+            update_fields.append("status = ?")
+            update_values.append(status)
         # 拼接SQL语句
         sql = f"UPDATE nodes SET {', '.join(update_fields)} WHERE node_id = ?"
         update_values.append(node_id)  # 最后添加WHERE条件的node_id

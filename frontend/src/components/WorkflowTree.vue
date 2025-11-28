@@ -36,7 +36,8 @@ const emit = defineEmits([
   'update-node-parameters',
   'refresh-node',
   'upload-media',
-  'update-node-media-from-parent'
+  'update-node-media-from-parent',
+  'regenerate-node'
 ])
 
 // 传给 lib 的 emit 适配器

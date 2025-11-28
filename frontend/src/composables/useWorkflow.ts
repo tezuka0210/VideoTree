@@ -441,53 +441,48 @@ function toggleNodeCollapse(nodeId: string) {
     }
   }
 
-  /** (Action) 开始生成新节点 (由 WorkflowForm.vue 调用) */
-  async function handleGenerate(moduleId: string, parameters: Record<string, any>) {
-    isGenerating.value = true
-    showStatus('开始生成...')
+  /** (Action) 提交生成请求（仅传递参数，不处理业务逻辑） */
+  async function handleGenerate(nodeId:string, moduleId: string, parameters: Record<string, any>,nodeTitle: string) {
+    isGenerating.value = true;
+    showStatus('正在提交生成请求...');
 
     try {
       let parentIds = [...selectedParentIds.value] // 复制
       if (parentIds.length === 0 && allNodes.value.length > 0 && rootNodeId.value) {
       }
-      // (校验) 可以在这里添加原版的校验逻辑
-      if ((moduleId === 'ImageGenerateImage_Basic' || moduleId === 'ImageGenerateVideo') && parentIds.length === 0) {
-        alert('此模块需要输入图像/视频，请先选择一个包含媒体的父节点。')
-        throw new Error('缺少父节点提供输入媒体')
-      }
-      if (moduleId === 'ImageMerging' && parentIds.length !== 2) {
-        alert('图像合并模块需要选择两个父节点。')
-        throw new Error('图像合并需要两个父节点')
-      }
-
+      // 2. 构建请求 payload（仅包含核心信息）
       const payload = {
-        tree_id: 1, // 假设 tree_id 总是 1
+        tree_id: 1,
+        node_id: nodeId, // 目标节点ID
+        title: nodeTitle,
         parent_ids: parentIds,
-        module_id: moduleId,
-        parameters: parameters
-      }
+        module_id: moduleId,    // 要执行的模块
+        parameters: parameters  // 前端表单参数
+      };
 
-      const response = await fetch(DB_API_POST_URL, {
+      // 3. 调用后端 create_node 接口（由后端处理生成和数据库更新）
+      const response = await fetch('/api/nodes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      })
+      });
 
-      if (!response.ok) { const errText = await response.text(); throw new Error(`生成失败: ${errText}`) }
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`请求失败: ${errText}`);
+      }
 
-      const updatedTree: { nodes: DbNode[] } = await response.json()
-      processTreeData(updatedTree.nodes, '生成完成！新节点已添加到历史树。')
-      // (重要) 生成后清空选择
-      selectedParentIds.value.length = 0
+      // 4. 接收后端返回的更新后的数据并刷新视图
+      const updatedTree: { nodes: DbNode[] } = await response.json();
+      processTreeData(updatedTree.nodes, '生成操作完成');
+
 
     } catch (error: any) {
-      console.error(error)
-      if (!['缺少父节点', '需要两个父节点'].some(msg => error.message.includes(msg))) {
-        alert(error.message)
-      }
-      showStatus('生成失败，请检查参数或父节点选择。')
+      console.error('生成请求处理失败:', error);
+      alert(error.message || '生成失败，请重试');
+      showStatus('生成失败');
     } finally {
-      isGenerating.value = false
+      isGenerating.value = false;
     }
   }
 

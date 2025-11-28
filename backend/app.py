@@ -163,68 +163,79 @@ def get_comfyui_outputs(prompt_id: str) -> dict:
 
     return outputs
 
+import urllib.parse
 
-
-
-# 【核心修正】_get_image_info_from_parent 函数
-def _get_image_info_from_parent(parent_node_id):
-    """根据父节点ID，获取其输出资源信息。
-       如果父节点是 'Upload' 类型，只返回文件名；
-       否则，复制文件到 input 目录，并返回文件名。
+def get_input_image_filenames_from_db(node_id: str) -> list[str]:
     """
-    source_node = database.get_node(parent_node_id)
-    if not source_node:
-        raise ValueError(f"指定的父节点 {parent_node_id} 不存在。")
-
-    assets = source_node.get('assets', {})
+    从数据库加载节点数据，提取 assets.input.images 中图片的文件名（仅 filename）
+    Args: node_id: 节点ID   
+    Returns: list[str]: 图片文件名列表（若不存在则返回空列表）
+    """
+    try:
+        # 1. 从数据库获取节点数据
+        node_data = database.get_node(node_id)
+        if not node_data:
+            print(f"节点 {node_id} 不存在于数据库中")
+            return []
+        
+        # 2. 层级解析 assets.input.images 字段
+        assets = node_data.get('assets', {})
+        input_assets = assets.get('input', {})
+        images_urls = input_assets.get('images', [])
+        
+        # 3. 确保是列表类型
+        if not isinstance(images_urls, list):
+            print(f"节点 {node_id} 的 assets.input.images 不是列表类型")
+            return []
+        
+        # 4. 提取每个URL中的filename参数（仅保留文件名）
+        filenames = []
+        for url in images_urls:
+            if not isinstance(url, str):
+                continue  # 跳过非字符串类型的URL
+            parsed_url = urllib.parse.urlparse(url)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            filename = query_params.get('filename', [None])[0]
+            if filename:
+                filenames.append(filename)
+        
+        return filenames
     
-    media_list = assets.get('images', []) or assets.get('videos', []) or assets.get('audio',[])
-    if not media_list:
-        raise ValueError(f"父节点 {parent_node_id} 没有可用的媒体资源。")
+    except Exception as e:
+        print(f"获取节点 {node_id} 的 input.images 文件名时出错: {str(e)}")
+        return []
 
-    media_url = media_list[0]
-    parsed_url = urllib.parse.urlparse(media_url)
-    query_params = urllib.parse.parse_qs(parsed_url.query)
-    filename = query_params.get('filename', [None])[0]
-    subfolder = query_params.get('subfolder', [''])[0]
-    file_type = query_params.get('type', ['output'])[0] # 'input' or 'output'
-
-    if not filename:
-         raise ValueError(f"无法从父节点资源URL解析文件名: {media_url}")
-
-    # --- 区分处理逻辑 ---
-    if source_node.get("module_id") == "Upload" or file_type == "input":
-        # 如果父节点是 Upload 或资源类型是 input，文件已在 input 目录
-        source_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-        if not os.path.exists(source_path):
-             # 尝试在 output 目录也找一下，以防万一
-             output_source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-             if os.path.exists(output_source_path):
-                 print(f"    - 警告: Upload 节点资源 '{filename}' 在 input 未找到，但在 output 找到，执行复制。")
-                 destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-                 try: shutil.copy(output_source_path, destination_path)
-                 except Exception as e: raise IOError(f"从 output 复制 Upload 节点文件失败: {filename}, 原因: {e}")
-             else:
-                 raise FileNotFoundError(f"源文件 (来自上传节点) 在 input 和 output 目录均未找到: {filename}")
-        print(f"    - 使用来自上传节点的文件: {filename} (无需或已复制)")
-        return filename # 只返回文件名
-    else:
-        # 否则，文件在 output 目录，需要复制到 input
-        source_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
-        destination_path = os.path.join(COMFYUI_INPUT_PATH, filename)
-        if not os.path.exists(source_path):
-            source_path_alt = os.path.join(COMFYUI_OUTPUT_PATH, filename)
-            if not os.path.exists(source_path_alt):
-               raise FileNotFoundError(f"源文件未找到: {source_path} 或 {source_path_alt}")
-            else: source_path = source_path_alt
-
-        try:
-            shutil.copy(source_path, destination_path)
-            print(f"    - 已将文件 '{filename}' 从 output 复制到 input 目录。")
-            return filename
-        except Exception as e:
-            print(f"    - 错误: 文件复制失败: {e}")
-            raise IOError(f"复制文件失败: {filename}")
+def get_input_image_count_from_db(node_id: str) -> int:
+    """
+    从数据库加载节点数据，计算 assets.input.images 中的图片数量
+    Args:
+        node_id: 节点ID
+    Returns:
+        int: 图片数量（不存在则返回0）
+    """
+    try:
+        # 1. 从数据库加载节点数据
+        node_data = database.get_node(node_id)
+        if not node_data:
+            print(f"节点 {node_id} 不存在于数据库中")
+            return 0
+        
+        # 2. 解析 assets 字段（兼容可能的空值或缺失）
+        assets = node_data.get('assets', {})
+        input_assets = assets.get('input', {})  # 获取 input 子字段
+        images_list = input_assets.get('images', [])  # 获取 images 列表
+        
+        # 3. 确保是列表类型，避免非列表数据导致错误
+        if not isinstance(images_list, list):
+            print(f"节点 {node_id} 的 assets.input.images 不是列表类型")
+            return 0
+        
+        # 4. 返回列表长度（即图片数量）
+        return len(images_list)
+    
+    except Exception as e:
+        print(f"计算节点 {node_id} 的 input.images 数量时出错: {str(e)}")
+        return 0
 
 def encode_image_to_base64(path):
     mime, _ = mimetypes.guess_type(path)
@@ -603,24 +614,56 @@ def create_node():
     print(json.dumps(data, indent=2, ensure_ascii=False))
     print("-------------------------------")
     tree_id = data.get('tree_id')
-    parent_ids = data.get('parent_ids',[]) # 现在我们简化为单个父节点
+    node_id = data.get('node_id',[]) # 本节点号
+    node_title=data.get('title')
+    parent_ids = data.get('parent_ids', [])
     module_id_from_frontend = data.get('module_id')
     parameters = data.get('parameters', {})
+
     # --- 【新增】开始：处理随机 Seed ---
     # 检查 'seed' 是否存在并且其值是否为 None (来自前端的 null)
-    if 'seed' in parameters and parameters['seed'] is None:
-        # 如果是 None，就生成一个 Python 随机整数
-        parameters['seed'] = random.randint(0, 999999999999999)
-        print(f"    - 检测到空 Seed，已生成随机 Seed: {parameters['seed']}")
-    if 'audio_seed' in parameters and parameters['audio_seed'] is None:
-        # 如果是 None，就生成一个 Python 随机整数
-        parameters['audio_seed'] = random.randint(0, 4294967295)
-        print(f"    - 检测到空 Seed，已生成随机 Seed: {parameters['audio_seed']}")
-    # --- 【新增】结束 ---
+    REQUIRES_SEED_MODULES = [
+        'TextGenerateImage', 
+        'ImageGenerateImage_Basic', 
+        'ImageGenerateImage_Canny',
+        'ImageGenerateVideo', 
+        'ImageHDREstoration',
+        'PartialRepainting',
+        'Put_It_Here',
+        'TextGenerateVideo',
+        'CameraControl',
+        'FLFrameToVideo'  # 根据实际需要补充工作流ID
+    ]
 
-    # workflow = load_workflow(module_id)
-    # if workflow is None:
-    #     return jsonify({"error": f"Workflow for module '{module_id}' not found."}), 404
+    # 定义需要 audio_seed 的工作流列表
+    REQUIRES_AUDIO_SEED_MODULES = [
+        'TextToAudio'
+    ]
+
+    # 处理 seed
+    if module_id_from_frontend in REQUIRES_SEED_MODULES:
+        # 若参数中没有 seed，新增并赋值
+        if 'seed' not in parameters:
+            parameters['seed'] = random.randint(0, 999999999999999)
+            print(f"    - 工作流 {module_id_from_frontend} 需 seed，已自动生成: {parameters['seed']}")
+        # 若参数中有 seed 但为 None，替换为随机值
+        elif parameters['seed'] is None:
+            parameters['seed'] = random.randint(0, 999999999999999)
+            print(f"    - 工作流 {module_id_from_frontend} 检测到空 seed，已生成: {parameters['seed']}")
+
+    # 处理 audio_seed
+    if module_id_from_frontend in REQUIRES_AUDIO_SEED_MODULES:
+        # 若参数中没有 audio_seed，新增并赋值
+        if 'audio_seed' not in parameters:
+            parameters['audio_seed'] = random.randint(0, 4294967295)
+            print(f"    - 工作流 {module_id_from_frontend} 需 audio_seed，已自动生成: {parameters['audio_seed']}")
+        # 若参数中有 audio_seed 但为 None，替换为随机值
+        elif parameters['audio_seed'] is None:
+            parameters['audio_seed'] = random.randint(0, 4294967295)
+            print(f"    - 工作流 {module_id_from_frontend} 检测到空 audio_seed，已生成: {parameters['audio_seed']}")
+    # --- 【修改结束】---
+    
+    
     workflow = None
     final_module_id = module_id_from_frontend # 最终使用的模块ID
     image_filenames = {} # 用于存储需要注入的文件名 { "node_title": "filename.png" }
@@ -631,6 +674,7 @@ def create_node():
             print(">>> 检测到 AddText 模块，仅保存文本节点到数据库。")
             # "AddText" 模块没有 ComfyUI 操作，它只保存节点
             new_node_id = database.add_node(
+                node_id=node_id,
                 tree_id=tree_id,
                 parent_ids=parent_ids,
                 module_id=final_module_id,
@@ -650,6 +694,7 @@ def create_node():
             print(">>> 检测到 AddWorkflow 模块，仅保存文本节点到数据库。")
             # "AddWorkflow" 模块没有 ComfyUI 操作，它只保存节点
             new_node_id = database.add_node(
+                node_id=node_id,
                 tree_id=tree_id,
                 parent_ids=parent_ids,
                 module_id=final_module_id,
@@ -665,77 +710,72 @@ def create_node():
             updated_tree = database.get_tree_as_json(tree_id)
             return jsonify(updated_tree), 201
         # 情况3: Mask 输入 (最高优先级判断)
-        if 'mask_filename' in parameters:
-            print(">>> 检测到 Mask 输入，加载 Inpainting 工作流...")
-            final_module_id = 'PartialRepainting' # 强制使用 Inpainting 模块
-            workflow = load_workflow(final_module_id)
-            if workflow is None: raise ValueError(f"未找到 Inpainting 工作流 '{final_module_id}.json'")
-            if len(parent_ids) != 1: raise ValueError("Mask 输入模式需要且仅需要一个父节点提供原图。")
+        # if 'mask_filename' in parameters:
+        #     print(">>> 检测到 Mask 输入，加载 Inpainting 工作流...")
+        #     final_module_id = 'PartialRepainting' # 强制使用 Inpainting 模块
+        #     workflow = load_workflow(final_module_id)
+        #     if workflow is None: raise ValueError(f"未找到 Inpainting 工作流 '{final_module_id}.json'")
+        #     if len(parent_ids) != 1: raise ValueError("Mask 输入模式需要且仅需要一个父节点提供原图。")
             
-            # 处理原图输入
-            original_image_filename = _get_image_info_from_parent(parent_ids[0])
-            image_filenames["LoadImage"] = original_image_filename
+        #     # 处理原图输入
+        #     original_image_filename = _get_image_info_from_parent(parent_ids[0])
+        #     image_filenames["LoadImage"] = original_image_filename
             
-            # 处理 Mask 输入 (直接使用文件名)
-            mask_filename = parameters.get('mask_filename')
-            if not mask_filename: raise ValueError("Mask 文件名在参数中缺失。")
-            # 确认 Mask 文件存在于 input 目录 (可选的安全检查)
-            if not os.path.exists(os.path.join(COMFYUI_INPUT_PATH, mask_filename)):
-                raise FileNotFoundError(f"上传的 Mask 文件 '{mask_filename}' 在 input 目录中未找到。")
-            image_filenames["LoadImage(Mask)"] = mask_filename
-            print(f"    - 原图: {original_image_filename}, Mask图: {mask_filename}")
+        #     # 处理 Mask 输入 (直接使用文件名)
+        #     mask_filename = parameters.get('mask_filename')
+        #     if not mask_filename: raise ValueError("Mask 文件名在参数中缺失。")
+        #     # 确认 Mask 文件存在于 input 目录 (可选的安全检查)
+        #     if not os.path.exists(os.path.join(COMFYUI_INPUT_PATH, mask_filename)):
+        #         raise FileNotFoundError(f"上传的 Mask 文件 '{mask_filename}' 在 input 目录中未找到。")
+        #     image_filenames["LoadImage(Mask)"] = mask_filename
+        #     print(f"    - 原图: {original_image_filename}, Mask图: {mask_filename}")
 
         # 情况2: 两个父节点 -> 图像合并
-        elif len(parent_ids) == 2:
-            print(">>> 检测到两个父节点，加载工作流...")
-            if(module_id_from_frontend == 'ImageMerging'):
-                final_module_id = module_id_from_frontend 
-                workflow = load_workflow(final_module_id)
-                if workflow is None: raise ValueError(f"未找到 ImageMerging 工作流 '{final_module_id}.json'")
-                
-                # 处理两个父节点的图像输入
-                image1_filename = _get_image_info_from_parent(parent_ids[0])
-                image2_filename = _get_image_info_from_parent(parent_ids[1])
-                image_filenames["LoadImage"] = image1_filename
-                image_filenames["LoadImage(Move)"] = image2_filename 
-                print(f"    - 输入图1: {image1_filename}, 输入图2: {image2_filename}")
-            elif(module_id_from_frontend == 'FLFrameToVideo'):
+        count = get_input_image_count_from_db(node_id)
+        if count == 2:
+            if(module_id_from_frontend == 'FLFrameToVideo'):
                 final_module_id = module_id_from_frontend 
                 workflow = load_workflow(final_module_id)
                 if workflow is None: raise ValueError(f"未找到 FLFrameToVideo 工作流 '{final_module_id}.json'")
-                
-                # 处理两个父节点的图像输入
-                image1_filename = _get_image_info_from_parent(parent_ids[0])
-                image2_filename = _get_image_info_from_parent(parent_ids[1])
+                image1_filename = get_input_image_filenames_from_db(node_id)[0]
+                image2_filename = get_input_image_filenames_from_db(node_id)[1]
                 image_filenames["LoadStartImage"] = image1_filename
                 image_filenames["LoadLastImage"] = image2_filename 
-                print(f"    - 输入图1: {image1_filename}, 输入图2: {image2_filename}")
+            else:
+                print(">>> 检测到两个输入,执行ImageMerging工作流...")
+                image1_filename = get_input_image_filenames_from_db(node_id)[0]
+                image2_filename = get_input_image_filenames_from_db(node_id)[1]
+                image_filenames["LoadImage"] = image1_filename
+                image_filenames["LoadImage(Move)"] = image2_filename 
+                merge_workflow = load_workflow('ImageMerging')
+                for node_title, filename in image_filenames.items():
+                    target_node_id = find_node_id_by_title(merge_workflow, node_title)
+                    if target_node_id:
+                        merge_workflow[target_node_id]["inputs"]["image"] = filename
+                        print(f"    - 已将文件名 '{filename}' 注入到节点 '{node_title}' (ID: {target_node_id})。")
+                queued_prompt = queue_comfyui_prompt(merge_workflow)
+                prompt_id = queued_prompt['prompt_id']
+                # 使用WebSocket等待并获取输出
+                merge_outputs = get_comfyui_outputs(prompt_id)
+
+                parsed_url = urllib.parse.urlparse(batch_outputs.get("images", []))
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                merge_filename_merge = query_params.get('filename', [None])[0]
+                # 信息注入
+                image_filenames["LoadImage"] = merge_filename_merge
+                final_module_id = module_id_from_frontend
+                workflow = load_workflow(final_module_id)            
 
         # 情况1: 一个父节点 -> 标准图生图/图生视频
-        elif len(parent_ids) == 1:
-            print(f">>> 检测到一个父节点，加载工作流: {module_id_from_frontend}")
+        elif count == 1:
+            print(f">>> 检测到一个输入,加载工作流: {module_id_from_frontend}")
             final_module_id = module_id_from_frontend
             workflow = load_workflow(final_module_id)
             if workflow is None: raise ValueError(f"未找到工作流 '{final_module_id}.json'")
-            # 处理文字节点输入
-            if final_module_id == 'TextToAudio' and (not parameters.get('text')):
-                try:
-                    # 尝试获取父节点
-                    parent_node = database.get_node(parent_ids[0])
-                    # 检查父节点是否是 'AddText' 节点
-                    if parent_node and parent_node.get('module_id') == 'AddText' and parent_node.get('parameters'):
-                        # 尝试获取父节点的文本 (positive_prompt)
-                        parent_text = parent_node['parameters'].get('positive_prompt')
-                        if parent_text:
-                            # 自动将父节点的文本填充到当前节点的 'text' 参数中
-                            parameters['text'] = parent_text
-                            print(f"    - 'text' 参数为空，已从父节点 'AddText' ({parent_ids[0]}) 继承文本。")
-                except Exception as e:
-                    print(f"    - 警告：尝试从父节点继承文本时出错: {e}")
-            
+
             # 处理单个父节点的图像输入 (仅当模块需要时才处理)
-            if final_module_id in ['ImageGenerateImage_Basic', 'ImageGenerateImage_Canny','ImageGenerateVideo','CameraControl','ImageCanny','ImageHDRestoration','ImageMerging','PartialRepainting','Put_It_Here','RemoveBackground']: # 根据你的模块ID调整
-                image_filename = _get_image_info_from_parent(parent_ids[0])
+            if final_module_id in ['ImageGenerateImage_Basic', 'ImageGenerateImage_Canny','ImageGenerateVideo','CameraControl','ImageCanny','ImageHDRestoration','PartialRepainting','Put_It_Here','RemoveBackground']: # 根据你的模块ID调整
+                image_filename = get_input_image_filenames_from_db(node_id)[0]
                 image_filenames["LoadImage"] = image_filename
                 print(f"    - 输入图: {image_filename}")
             else:
@@ -743,8 +783,8 @@ def create_node():
 
 
         # 情况0: 没有父节点 -> 文生图/文生视频 或 根节点创建
-        else: # len(parent_ids) == 0
-             print(f">>> 没有父节点，加载工作流: {module_id_from_frontend}")
+        else: # count == 0
+             print(f">>> 没有输入图片，加载工作流: {module_id_from_frontend}")
              final_module_id = module_id_from_frontend
              workflow = load_workflow(final_module_id)
              if workflow is None: raise ValueError(f"未找到工作流 '{final_module_id}.json'")
@@ -895,21 +935,33 @@ def create_node():
         print(f"执行 ComfyUI 工作流或数据库操作时发生未知错误: {e}")
         return jsonify({"error": "执行工作流时发生内部错误。"}), 500
 
+    node_data = database.get_node(node_id)
+    if not node_data:
+        print(f"节点 {node_id} 不存在于数据库中")
+        return []
+    assets = node_data.get('assets', {})
+    input_assets = assets.get('input', {})
+    images_urls = input_assets.get('images', [])
+    
     assets_with_output = {
+        "input":images_urls,
         "output": outputs
     }
 
+
     # --- 在数据库中记录新节点 ---
-    new_node_id = database.add_node(
-        tree_id=tree_id,
-        parent_ids=parent_ids, # 传递原始的父节点列表
-        module_id=final_module_id, # 保存实际使用的模块ID
-        parameters=parameters, # 保存前端传入的原始参数
-        assets=assets_with_output,
-        status='completed' # 假设执行成功
+    database.update_node(
+        node_id=node_id,
+        payload={
+                "title": node_title,
+                "module_id": final_module_id,
+                "assets": assets_with_output,
+                "parameters": parameters,
+                "status":'completed'
+            }
+
     )
-    if not new_node_id:
-        return jsonify({"error": "节点执行成功但保存到数据库失败。"}), 500
+
 
     # --- 返回更新后的树结构 ---
     updated_tree = database.get_tree_as_json(tree_id)

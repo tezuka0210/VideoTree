@@ -1074,44 +1074,19 @@ title.on('dblclick', (ev) => {
             parent_nodes: d.originalParents || [] // 父节点信息
           }
         };
-        // 发送请求到后端agent接口
-        // fetch('/api/agents/process', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify(payload)
-        // })
-        // .then(res => res.json())
-        // .then(data => {
-        //   console.log('Agent处理结果:', data);
-        //   // 处理返回结果（例如更新节点、提示用户等）
-        //   const rawWorkflowId = data.selected_workflow || '';
-        //   const workflowId = rawWorkflowId.replace(".json", ''); // 正则匹配并移除末尾的 .json
-        //   import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
-        //     if (!workflowParameters) {
-        //       console.error('workflowParameters 未正确导入');
-        //       return;
-        //     }
-        //     // 2. 获取对应工作流的默认参数
-        //     const defaultParams = workflowParameters[workflowId] || {};
-            
-        //     // 3. 整合参数（agent返回的prompt覆盖默认值）
-        //     const updatedParams = {
-        //       ...defaultParams,
-        //       prompt: data.prompt || defaultParams.prompt || '' // 确保prompt字段存在
-        //     };
-        const data = {
-            status: "success",
-            selected_workflow: "ImageGenerateImage_Basic.json",
-            workflow_title: "Image Modification",
-            message: {
-              negative: 'blurry details, dark shadows, distorted proportion… unnatural lighting, harsh edges, excessive noise',
-              positive: 'A golden retriever joyfully playing with a vibrant…(dynamic composition:1.1), (natural lighting:1.1)'
-            }
-          };
-        console.log('Agent处理结果:', data);
+        //发送请求到后端agent接口
+        fetch('/api/agents/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+          console.log('Agent处理结果:', data);
           // 处理返回结果（例如更新节点、提示用户等）
           const rawWorkflowId = data.selected_workflow || '';
           const workflowId = rawWorkflowId.replace(".json", ''); // 移除末尾的 .json
+          const workflow_title = data.workflow_title;
           import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
           if (!workflowParameters) {
             console.error('workflowParameters 未正确导入');
@@ -1131,7 +1106,7 @@ title.on('dblclick', (ev) => {
           const updatedParams = {
             ...defaultParams, // 基础默认参数
             positive_prompt: data.message.positive || defaultParams.positive_prompt || '', // 优先使用agent返回的positive
-            negative_prompt: data.message.negative || defaultParams.negative_prompt || '' // 优先使用agent返回的negative
+            negative_prompt: data.message.negative || defaultParams.negative_prompt || '', // 优先使用agent返回的negative
           };
           console.log('转换后的参数格式:', updatedParams);
 
@@ -1139,11 +1114,11 @@ title.on('dblclick', (ev) => {
           // 4. 更新节点参数并触发刷新
           d.parameters = updatedParams;
           // 5. 调用App.vue的handleRefreshNode刷新节点
-          emit('refresh-node', d.id, workflowId, d.parameters);
+          emit('refresh-node', d.id, workflowId, d.parameters,workflow_title);
           });
-        //})
+        })
         
-        //.catch(err => console.error('调用Agent失败:', err));
+        .catch(err => console.error('调用Agent失败:', err));
       })
       .on('mouseenter', function () {
         d3.select(this)
@@ -1546,8 +1521,8 @@ title.on('dblclick', (ev) => {
             if (el.attr('type') === 'number') val = Number(val)
             if (key) currentParams[key] = val
         })
-        console.log('currentParams:', currentParams);
-        emit('regenerate-node', d, currentParams)
+        console.log('currentParams:', currentParams, d.module_id);
+        emit('regenerate-node', d.id,d.module_id, currentParams)
       })
 
     // --- 核心渲染函数：增加了 fontSize 参数 ---

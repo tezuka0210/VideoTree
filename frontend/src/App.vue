@@ -32,6 +32,7 @@
             @create-card="createCard"
             @refresh-node="handleRefreshNode"
             @upload-media="updateNodeMedia"
+            @regenerate-node="handleGenerate"
           />
         </div>
 
@@ -74,7 +75,7 @@
       :initial-module-id="initialModuleIdForPopover"
       :initial-workflow-type="initialWorkflowTypeForPopover"
       @close="isGenerationPopoverOpen = false"
-      @generate="handleGenerate"
+      
       
     />
   </div>
@@ -172,15 +173,16 @@ async function onStitchRequest() {
  */
 const createCard = async (parentNode: AppNode, moduleId: string) => {
   console.log(`[App] 收到直接生成请求: Parent=${parentNode.id}, Module=${moduleId}`);
+  const newNodeId = crypto.randomUUID();
   selectedParentIds.value = [parentNode.id];
   const defaultParams = {
     
   };
-  await handleGenerate(moduleId, defaultParams);
+  await handleGenerate(newNodeId,moduleId, defaultParams);
   selectedParentIds.value = []; 
 }
 
-const handleRefreshNode = (nodeId: string, newModuleId: string, updatedParams: Record<string, any>) => {
+const handleRefreshNode = (nodeId: string, newModuleId: string, updatedParams: Record<string, any>,title: Record<string, any>) => {
   // 找到需要刷新的节点并修改其数据（触发响应式更新）
   allNodes.value = allNodes.value.map(node => {
     if (node.id === nodeId) {
@@ -188,6 +190,7 @@ const handleRefreshNode = (nodeId: string, newModuleId: string, updatedParams: R
       return {
         ...node,
         module_id: newModuleId,       // 更新模块类型
+        title:title,
         parameters: updatedParams  // 更新参数
       };
     }
