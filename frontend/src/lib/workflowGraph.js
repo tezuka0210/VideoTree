@@ -77,9 +77,15 @@ function getSelectionColor(node) {
   if (cat === 'audio') return NODE_COLORS.audio
   if (cat === 'image') return NODE_COLORS.image
   if (cat === 'video') return NODE_COLORS.video
-  return '#CBD5E1' // helper 节点继续用灰色；要极端也可以以后挪到 CSS 变量
+  return '#CBD5E1'
 }
 
+/** 统一控制卡片选中样式 */
+function setCardSelected(cardSel, nodeData, isSelected) {
+  // 只通过 class 控制选中状态，具体阴影 & 颜色交给 CSS
+  cardSel.classed('is-selected', isSelected)
+  // 不再在这里写 box-shadow，避免覆盖你在 CSS 里的
+}
 
 const lineGenerator = d3.line()
   .x(d => d.x)
@@ -161,12 +167,9 @@ export function updateSelectionStyles(svgElement, selectedIds) {
       if (!d || !d.id) return
       const card = d3.select(this).select('.node-card')
       if (card.empty()) return
-      if (selectedIds.includes(d.id)) {
-        const selColor = getSelectionColor(d)
-        card.style('box-shadow', `0 0 0 2px ${selColor}`)
-      } else {
-        card.style('box-shadow', 'none')
-      }
+
+      const isSelected = selectedIds.includes(d.id)
+      setCardSelected(card, d, isSelected)
     })
 }
 
@@ -292,7 +295,7 @@ export function renderTree(
     if (isInit) {
       width = 60
       height = 60
-    } else if (cardType === 'textFull'|| 'AddWorkflow') {
+    } else if (cardType === 'textFull' || cardType === 'AddWorkflow') {
       width = 260
       height = 140
     } else if (cardType === 'TextImage') {
@@ -694,6 +697,7 @@ title.on('dblclick', (ev) => {
 
     const card = fo.append('xhtml:div')
       .attr('class', 'node-card')
+      .attr('data-node-category', getNodeCategory(d))
       .style('width', '100%')
       .style('height', '100%')
       .style('display', 'flex')
@@ -707,12 +711,8 @@ title.on('dblclick', (ev) => {
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    if (selectedIds.includes(d.id)) {
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', `0 0 0 2px ${selColor}`)
-    } else {
-      card.style('box-shadow', 'none')
-    }
+    // ✅ 用统一 helper 控制选中
+    setCardSelected(card, d, selectedIds.includes(d.id))
 
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button')) return
@@ -721,10 +721,10 @@ title.on('dblclick', (ev) => {
       const on = selected.has(d.id)
       if (on) selected.delete(d.id)
       else if (selected.size < 2) selected.add(d.id)
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
+      setCardSelected(card, d, !on)
       emit('update:selectedIds', Array.from(selected))
     })
+
 
     card.on('mouseenter', () => card.selectAll('.dots-container').style('opacity', '1'))
       .on('mouseleave', () => card.selectAll('.dots-container').style('opacity', '0'))
@@ -855,6 +855,7 @@ title.on('dblclick', (ev) => {
 
     const card = fo.append('xhtml:div')
       .attr('class', 'node-card')
+      .attr('data-node-category', getNodeCategory(d))
       .style('width', '100%')
       .style('height', '100%')
       .style('display', 'flex')
@@ -868,12 +869,7 @@ title.on('dblclick', (ev) => {
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    if (selectedIds.includes(d.id)) {
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', `0 0 0 2px ${selColor}`)
-    } else {
-      card.style('box-shadow', 'none')
-    }
+    setCardSelected(card, d, selectedIds.includes(d.id))
 
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
@@ -882,8 +878,7 @@ title.on('dblclick', (ev) => {
       const on = selected.has(d.id)
       if (on) selected.delete(d.id)
       else if (selected.size < 2) selected.add(d.id)
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
+      setCardSelected(card, d, !on)
       emit('update:selectedIds', Array.from(selected))
     })
 
@@ -1144,6 +1139,7 @@ title.on('dblclick', (ev) => {
 
     const card = fo.append('xhtml:div')
       .attr('class', 'node-card')
+      .attr('data-node-category', getNodeCategory(d))
       .style('width', '100%')
       .style('height', '100%')
       .style('display', 'flex')
@@ -1157,12 +1153,7 @@ title.on('dblclick', (ev) => {
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    if (selectedIds.includes(d.id)) {
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', `0 0 0 2px ${selColor}`)
-    } else {
-      card.style('box-shadow', 'none')
-    }
+    setCardSelected(card, d, selectedIds.includes(d.id))
 
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button')) return
@@ -1171,8 +1162,7 @@ title.on('dblclick', (ev) => {
       const on = selected.has(d.id)
       if (on) selected.delete(d.id)
       else if (selected.size < 2) selected.add(d.id)
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
+      setCardSelected(card, d, !on)
       emit('update:selectedIds', Array.from(selected))
     })
 
@@ -1423,35 +1413,33 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
   const card = fo.append('xhtml:div')
     .attr('class', 'node-card')
+    .attr('data-node-category', getNodeCategory(d))
     .style('display', 'flex')
     .style('flex-direction', 'column')
     .style('height', '100%')
     .style('cursor', 'pointer')
     .style('position', 'relative')
     .style('user-select', 'none')
-    .style('-webkit-user-select', 'none');
+    .style('-webkit-user-select', 'none')
 
-  if (selectedIds.includes(d.id)) {
-    const selColor = getSelectionColor(d);
-    card.style('box-shadow', `0 0 0 2px ${selColor}`);
-  }
+  // 初始选中状态
+  setCardSelected(card, d, selectedIds.includes(d.id))
 
   addRightClickMenu(card, d, emit);
 
   card.on('click', ev => {
-    if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input, textarea')) return;
-    ev.stopPropagation();
-    const selected = new Set(selectedIds);
-    const on = selected.has(d.id);
-    if (on) selected.delete(d.id);
-    else if (selected.size < 2) selected.add(d.id);
-    const selColor = getSelectionColor(d);
-    card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`);
-    emit('update:selectedIds', Array.from(selected));
-  });
+    if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input, textarea')) return
+    ev.stopPropagation()
+    const selected = new Set(selectedIds)
+    const on = selected.has(d.id)
+    if (on) selected.delete(d.id)
+    else if (selected.size < 2) selected.add(d.id)
+    setCardSelected(card, d, !on)
+    emit('update:selectedIds', Array.from(selected))
+  })
 
-  card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
-      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'));
+  // card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
+  //     .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'));
 
   /* ---------- 顶部 header ---------- */
   buildHeader(card, d);
@@ -1472,19 +1460,16 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('border-right', '1px solid #e5e7eb')
     .style('display', 'flex')
     .style('flex-direction', 'column')
-    .style('gap', '2px')
+    // .style('gap', '2px')
     .style('font-size', '9px')
     .style('line-height', '1.3');
 
   // Input + ↻
   const headerRow = left.append('xhtml:div')
-    .style('display', 'flex')
-    .style('align-items', 'center');
+    .attr('class', 'io-header'); 
 
-  headerRow.append('xhtml:div')
-    .style('font-size', '10px')
-    .style('font-weight', '600')
-    .style('color', '#4b5563')
+  headerRow.append('xhtml:span')
+    .attr('class', 'io-title')
     .text('Input');
 
   headerRow.append('xhtml:div')
@@ -1533,6 +1518,10 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       emit('regenerate-node', d.id, d.module_id, currentParams);
     });
 
+  // 标题下方统一虚线
+  left.append('xhtml:div')
+    .attr('class', 'io-divider');
+
   const params = d.parameters || {};
   const isVideoNode = /Video/i.test(d.module_id);
   const orderedParamKeys = isVideoNode
@@ -1564,9 +1553,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   };
 
   /* ---------- Positive Prompt ---------- */
-    /* ---------- Positive Prompt ---------- */
   const positiveSection = left.append('xhtml:div')
-    .attr('class', 'prompt-section');
+    .attr('class', 'input-section input-section--primary');
 
   let positiveCollapsed = false;
   let positiveHasContent = false;   // ★ 是否有内容，用来控制是否可点
@@ -1682,7 +1670,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   /* ---------- Negative Prompt ---------- */
     /* ---------- Negative Prompt ---------- */
   const negativeSection = left.append('xhtml:div')
-    .attr('class', 'prompt-section');
+    .attr('class', 'input-section');
 
   let negativeCollapsed = false;
   let negativeHasContent = false;
@@ -1794,7 +1782,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   /* ---------- Input Images ---------- */
   const inputImages = (d.assets && d.assets.input && d.assets.input.images) || [];
   const imageSection = left.append('xhtml:div')
-    .attr('class', 'input-images-section');
+    .attr('class', 'input-section');
 
   const hasImages = inputImages.length > 0;
   let imagesCollapsed = false;
@@ -1826,12 +1814,26 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .text(`(${inputImages.length})`);
 
   if (hasImages) {
-    grid = imageSection.append('xhtml:div')
-      .attr('class', 'input-images-grid');
+    const shownImages = inputImages.slice(0, 2);
+    const imgCount = shownImages.length;
 
-    inputImages.slice(0, 2).forEach(url => {
+    grid = imageSection.append('xhtml:div')
+      .attr('class', 'input-images-grid')
+      .style('display', 'flex')
+      .style('flex-wrap', 'nowrap')
+      .style('gap', '4px')
+      .style('width', '100%')
+      .style('margin-top', '2px');
+
+    shownImages.forEach((url, idx) => {
       const thumbWrapper = grid.append('xhtml:div')
         .attr('class', 'input-image-thumb')
+        // ⭐ 单张图：铺满整行；两张图：各占一半
+        .style('flex', imgCount === 1 ? '1 1 100%' : '1 1 0')
+        .style('min-width', imgCount === 1 ? '0' : '50%')
+        .style('height', '56px')       // 高度你可以按需要调，比如 56 / 60
+        .style('border-radius', '4px')
+        .style('overflow', 'hidden')
         .on('mousedown', ev => ev.stopPropagation())
         .on('click', ev => {
           ev.stopPropagation();
@@ -1840,14 +1842,20 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
       thumbWrapper.append('xhtml:img')
         .attr('src', url)
-        .attr('alt', 'Input image');
+        .attr('alt', 'Input image')
+        // ⭐ 关键：让图片填满父容器宽度，保持比例裁剪
+        .style('width', '100%')
+        .style('height', '100%')
+        .style('object-fit', 'cover')
+        .style('display', 'block');
     });
   }
+
 
   /* ---------- Parameters ---------- */
   if (paramPairs.length) {
     const paramSection = left.append('xhtml:div')
-      .attr('class', 'input-params-section');
+      .attr('class', 'input-section');
 
     // 折叠头部：小三角 + 标题
     const header = paramSection.append('xhtml:div')
@@ -1912,27 +1920,43 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('position', 'relative')
     .style('overflow-y', 'auto')
     .style('max-height', '100%');
+  
 
-  // Output 头部 + A 按钮（替代 footer）
+  // Output 头部 + A 按钮（样式跟左侧 Input 一致）
   const outputHeader = right.append('xhtml:div')
-    .attr('class', 'output-header');
+    .attr('class', 'io-header');
 
   outputHeader.append('xhtml:span')
-    .attr('class', 'output-title')
+    .attr('class', 'io-title')
     .text('Output');
 
   if (canAddToStitch) {
-    const addBtn = outputHeader.append('xhtml:button')
-      .attr('class', 'add-clip-btn')
+    outputHeader.append('xhtml:div')
+      .attr('class', 'output-clip-btn')   // 注意：不用 add-clip-btn，避免被 hover 逻辑影响
+      .style('margin-left', 'auto')
+      .style('cursor', 'pointer')
+      .style('font-size', '11px')
+      .style('color', '#6b7280')
       .text('A')
+      .attr('title', 'Add to storyboard')
       .on('mousedown', ev => ev.stopPropagation())
       .on('click', ev => {
         ev.stopPropagation();
         emit('add-clip', d, isVideo ? 'video' : 'image');
+      })
+      .on('mouseenter', function () {
+        d3.select(this).style('color', '#2563eb');   // hover 变蓝，和左侧 ↻ 类似
+      })
+      .on('mouseleave', function () {
+        d3.select(this).style('color', '#6b7280');
       });
   }
 
-  // 视频预览
+  // 标题下方虚线
+  right.append('xhtml:div')
+    .attr('class', 'io-divider');
+
+  // 视频预览（自适应 Output 宽度，圆角 + 间距）
   if (videoUrls.length > 0) {
     const videoContainer = right.append('xhtml:div')
       .style('width', '100%')
@@ -1942,18 +1966,24 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       .style('margin-top', '4px');
 
     videoUrls.forEach(url => {
-      const v = videoContainer.append('xhtml:video')
+      const wrapper = videoContainer.append('xhtml:div')
         .style('width', '100%')
-        .style('height', '80px')
-        .style('object-fit', 'contain')
-        .attr('muted', true)
-        .attr('playsinline', true)
-        .attr('preload', 'metadata')
+        .style('height', '72px')          // 跟 Input Images 接近的高度
+        .style('border-radius', '4px')
+        .style('overflow', 'hidden')
         .on('mousedown', ev => ev.stopPropagation())
         .on('click', ev => {
           ev.stopPropagation();
           emit('open-preview', url, 'video');
         });
+
+      const v = wrapper.append('xhtml:video')
+        .style('width', '100%')
+        .style('height', '100%')
+        .style('object-fit', 'cover')     // 按长边裁切
+        .attr('muted', true)
+        .attr('playsinline', true)
+        .attr('preload', 'metadata');
 
       const el = v.node();
       el.autoplay = true;
@@ -1964,30 +1994,38 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     });
   }
 
-  // 图片预览
+
+  
+  // 图片预览（自适应 Output 宽度，圆角 + 间距）
   if (imageUrls.length > 0) {
     const imgContainer = right.append('xhtml:div')
       .style('width', '100%')
       .style('display', 'flex')
       .style('flex-direction', 'column')
       .style('gap', '4px')
-      .style('margin-top', '4px');
+      .style('margin-top', videoUrls.length ? '4px' : '4px');
 
     imageUrls.forEach((url, index) => {
-      imgContainer.append('xhtml:img')
-        .style('width', 'auto')
-        .style('max-width', '100%')
-        .style('height', '100px')
-        .style('object-fit', 'contain')
-        .attr('src', url)
-        .attr('alt', `Output image ${index + 1}`)
+      const wrapper = imgContainer.append('xhtml:div')
+        .style('width', '100%')
+        .style('height', '72px')          // 和视频统一
+        .style('border-radius', '4px')
+        .style('overflow', 'hidden')
         .on('mousedown', ev => ev.stopPropagation())
         .on('click', ev => {
           ev.stopPropagation();
           emit('open-preview', url, 'image');
         });
-    });
-  }
+
+      wrapper.append('xhtml:img')
+          .attr('src', url)
+          .attr('alt', `Output image ${index + 1}`)
+          .style('width', '100%')
+          .style('height', '100%')
+          .style('object-fit', 'cover')     // 填满 Output 区宽度
+          .style('display', 'block');
+      });
+    }
 
     /* ==================== 右下角拖拽：只改变节点高度 ==================== */
   const resizeHandle = card.append('xhtml:div')
@@ -2040,6 +2078,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
 
     const card = fo.append('xhtml:div')
       .attr('class', 'node-card node-card-resizable')
+      .attr('data-node-category', getNodeCategory(d))
       .style('width', '100%')
       .style('height', '100%')
       .style('display', 'flex')
@@ -2053,12 +2092,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    if (selectedIds.includes(d.id)) {
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', `0 0 0 2px ${selColor}`)
-    } else {
-      card.style('box-shadow', 'none')
-    }
+    setCardSelected(card, d, selectedIds.includes(d.id))
 
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
@@ -2067,8 +2101,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
       const on = selected.has(d.id)
       if (on) selected.delete(d.id)
       else if (selected.size < 2) selected.add(d.id)
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
+      setCardSelected(card, d, !on)
       emit('update:selectedIds', Array.from(selected))
     })
 
@@ -2086,12 +2119,23 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
 
     // === 左侧：纯文本编辑器 ===
     const left = body.append('xhtml:div')
-      .style('flex', '1') // 占据 50%
-      .style('min-width', '0')
-      .style('border-right', '1px solid #e5e7eb')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
+      .attr('class', 'io-panel io-panel--left');
+      
+    // ===== Input Header =====
+    const inputHeader = left.append('xhtml:div')
+      .attr('class', 'io-header');
 
+    inputHeader.append('xhtml:span')
+      .attr('class', 'io-title')
+      .text('Input');
+
+    // 如果有 tag / 模式小标签，就继续往 inputHeader 里 append
+    // inputHeader.append('xhtml:span').attr('class', 'io-tag').text('...');
+
+    // 标题下方那条虚线（左右要对齐就这一条）
+    left.append('xhtml:div')
+      .attr('class', 'io-divider');
+    
     // 这里复用你之前改好的 textarea 逻辑
     const promptText = d.parameters?.text || d.parameters?.positive_prompt || ''
     const textArea = left.append('xhtml:textarea')
@@ -2114,14 +2158,19 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
 
     // === 右侧：媒体显示区 ===
     const right = body.append('xhtml:div')
-      .style('flex', '1 1 0')
-      .style('min-width', '0')
-      .style('padding', '2px 4px')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('position', 'relative')
-      .style('overflow', 'hidden')
+      .attr('class', 'io-panel io-panel--right');
+
+    // ===== Output Header =====
+    const outputHeader = right.append('xhtml:div')
+      .attr('class', 'io-header');
+
+    outputHeader.append('xhtml:span')
+      .attr('class', 'io-title')
+      .text('Output');
+
+    // 右侧标题下方同样一条虚线
+    right.append('xhtml:div')
+      .attr('class', 'io-divider');
 
     // 判断是否有媒体内容
     const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
