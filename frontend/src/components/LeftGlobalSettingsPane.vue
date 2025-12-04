@@ -4,55 +4,91 @@
       <h2 class="text-xs font-semibold text-gray-700 tracking-wide">Global Model Settings</h2>
     </header>
 
-    <div class="flex-1 min-h-0 overflow-auto px-2.5 py-2 space-y-3 text-xs">
-      <!-- 模型选择 -->
+    <div class="flex-1 min-h-0 overflow-y-auto px-2.5 py-2 space-y-3 text-xs">
+      
       <div class="space-y-1">
-        <label class="block text-[11px] text-gray-500">Model</label>
-        <select
-          class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring focus:ring-indigo-100"
-        >
+        <label class="block text-[10px] uppercase font-bold text-gray-400">Model</label>
+        <select class="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
           <option>video-llm-1</option>
           <option>image-llm-1</option>
-          <option>custom</option>
+          <option>custom-v2</option>
         </select>
       </div>
 
-      <!-- 温度 -->
       <div class="space-y-1">
-        <label class="block text-[11px] text-gray-500">Temperature</label>
-        <input
-          type="number"
-          min="0"
-          max="1"
-          step="0.1"
-          class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring focus:ring-indigo-100"
-          placeholder="0.7"
-        />
+        <label class="block text-[10px] uppercase font-bold text-gray-400">Temperature</label>
+        <div class="flex items-center gap-2">
+           <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            class="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+          />
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.1"
+            class="w-10 border border-gray-200 rounded px-1 py-0.5 text-center focus:outline-none"
+            placeholder="0.7"
+          />
+        </div>
       </div>
 
-      <!-- 全局 system prompt -->
       <div class="space-y-1">
-        <label class="block text-[11px] text-gray-500">System Prompt</label>
+        <label class="block text-[10px] uppercase font-bold text-gray-400">Style</label>
+        <select class="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+          <option>Realistic & Photography</option>
+          <option>Cyber & Sci-Fi</option>
+          <option>Anime & Cel-Shaded</option>
+          <option>Pixar & 3D Cartoon</option>
+          <option>Art History & Painterly</option>
+          <option>Dark & Horror</option>
+          <option>GuFeng Classic</option>
+        </select>
+      </div>
+
+      <div class="space-y-1">
+        <label class="block text-[10px] uppercase font-bold text-gray-400">Mood</label>
+        <select class="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+          <option value="joyful">Joyful</option>
+          <option value="melancholic">Melancholic</option>
+          <option value="epic">Epic</option>
+          <option value="eerie">Eerie</option>
+          <option value="serene">Serene</option>
+        </select>
+      </div>
+
+      <div class="space-y-1">
+        <label class="block text-[10px] uppercase font-bold text-gray-400">Palette</label>
+        <select class="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
+          <option value="warm">Warm</option>
+          <option value="cool">Cool</option>
+          <option value="monochrome">Monochrome</option>
+          <option value="pastel">Pastel</option>
+        </select>
+      </div>
+
+      <div class="space-y-1 pt-1">
+        <label class="block text-[10px] uppercase font-bold text-gray-400">Reference Materials</label>
         <textarea
-          rows="3"
-          class="w-full border border-gray-200 rounded px-2 py-1 text-xs resize-none focus:outline-none focus:ring focus:ring-indigo-100"
-          placeholder="You are a video workflow copilot..."
+          rows="5"
+          class="w-full border border-gray-200 rounded px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50 leading-relaxed"
+          placeholder="Paste your reference text, cultural context, or historical background here..."
         ></textarea>
       </div>
 
-      <!-- 按钮 -->
-      <div class="pt-1 flex justify-end">
-        <button
-          type="button"
-          class="px-3 py-1 rounded bg-indigo-500 text-white text-xs hover:bg-indigo-600"
-        >
-          Apply Settings
-        </button>
-      </div>
+    </div>
+    
+    <div class="p-2 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+      <button class="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium transition-colors">
+        Apply Global Settings
+      </button>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-// 同样，将来可以接 props / emits，把这些设置同步给 App / useWorkflow
+// Logic for handling selects can be added here
 </script>

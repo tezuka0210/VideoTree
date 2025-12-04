@@ -6,7 +6,7 @@
     </div>
 
     <!-- 下半：全局参数，固定高度，大概 200~260px -->
-    <div class="h-64 min-h-[200px]">
+    <div class="h-64 min-h-[400px]">
       <LeftGlobalSettingsPane class="h-full" />
     </div>
   </div>
