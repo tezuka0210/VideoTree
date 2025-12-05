@@ -3,7 +3,7 @@
     <!-- 顶部细细一条标题栏 -->
     <header class="title-bar">
       <div class="title-main">
-        <h1>T2VTree VA</h1>
+        <h1>T2VTree Visual Analytics System</h1>
         <!-- <p id="status">{{ statusText }}</p> -->
       </div>
       <!-- 右上角可以预留一些全局状态 / 按钮位 -->
@@ -262,10 +262,34 @@ html, body, #app {
 
 .title-main h1 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #374151;
+  font-size: 18px;
+  font-weight: 700;
+
+  background-image: linear-gradient(
+    80deg,
+    #5A8CCD,  /* 深蓝（Image） */
+    #4FB488,  /* 深青绿（Video） */
+    #F3A953,  /* 深橙黄（Text） */
+    #D87474   /* 深玫瑰红（Audio） */
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  /* 轻微发光，让颜色更立体 */
+  text-shadow: 0 0 1px rgba(0,0,0,0.15);
 }
+
+/* 渐变缓慢流动 */
+@keyframes titleGradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
 
 .title-main p {
   margin: 0;
