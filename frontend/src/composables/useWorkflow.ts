@@ -463,7 +463,7 @@ function toggleNodeCollapse(nodeId: string) {
 
         const optimizedPrompt = promptResult.final_prompt;
         showStatus('Prompt 优化完成，正在提交生成请求...');
-        console.log(`final_prompt:${optimizedPrompt}`)
+        console.log(`final_prompt:`,optimizedPrompt)
 
           let parentIds = [...selectedParentIds.value] // 复制
         if (parentIds.length === 0 && allNodes.value.length > 0 && rootNodeId.value) {
@@ -582,7 +582,7 @@ function toggleNodeCollapse(nodeId: string) {
   // --- 7. 导出的拼接相关函数 (Actions) ---
 
   /** (Action) 添加一个片段到“运输带” (由 WorkflowTree.vue 调用) */
-  async function addClipToStitch(node: AppNode, type: 'image' | 'video' | 'audio') {
+  async function addClipToStitch(node: AppNode,url:string, type: 'image' | 'video' | 'audio') {
     // 1. 检查 media 数组是否存在且不为空
     if (!node.media || node.media.length === 0) {
       console.warn(`[addClipToStitch] 节点 ${node.id} 没有可添加的媒体。`);
@@ -591,7 +591,7 @@ function toggleNodeCollapse(nodeId: string) {
     //console.log(`addClipToStitch:${node.media}`)
     // 2. 从 media 数组中查找我们想要的媒体
     //    这里我们优先选择 'output' 类型的媒体
-    const targetMedia = node.media.find(media => media.source === 'output');
+    const targetMedia = url;
 
     // 3. 如果没有找到 output 媒体，可以选择第一个，或者直接返回
     if (!targetMedia) {
@@ -611,18 +611,18 @@ function toggleNodeCollapse(nodeId: string) {
     try {
       // 注意：下面的代码都从 targetMedia 获取信息，而不是 node.media
       if (type === 'audio') {
-        const audioDuration = await getVideoDuration(targetMedia.url);
+        const audioDuration = await getVideoDuration(targetMedia);
 
         const waveformPath =
           (node.parameters && (node.parameters as any).waveform_image)
             ? (node.parameters as any).waveform_image
-            : targetMedia.rawPath;
+            : targetMedia;
 
         const waveformUrl = makeFullUrl(waveformPath)!
 
         bufferClips.push({
           nodeId: node.id,
-          mediaPath: targetMedia.rawPath,
+          mediaPath: targetMedia,
           thumbnailUrl: waveformUrl,
           type: 'audio',
           duration: audioDuration,
@@ -630,11 +630,11 @@ function toggleNodeCollapse(nodeId: string) {
 
       } else if (type === 'video') {
         console.log(`video来了`)
-        const videoDuration = await getVideoDuration(targetMedia.url);
+        const videoDuration = await getVideoDuration(targetMedia);
         bufferClips.push({
           nodeId: node.id,
-          mediaPath: targetMedia.rawPath,
-          thumbnailUrl: targetMedia.url,
+          mediaPath: targetMedia,
+          thumbnailUrl: targetMedia,
           type: 'video',
           duration: videoDuration,
         });
@@ -642,8 +642,8 @@ function toggleNodeCollapse(nodeId: string) {
       } else { // image
         bufferClips.push({
           nodeId: node.id,
-          mediaPath: targetMedia.rawPath,
-          thumbnailUrl: targetMedia.url,
+          mediaPath: targetMedia,
+          thumbnailUrl: targetMedia,
           type: 'image',
           duration: 3.0,
         });

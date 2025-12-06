@@ -130,7 +130,45 @@ function findDescendants(nodeId, hierarchy) {
   return descendants
 }
 
+// /** 基于 _collapsed 计算可见节点与连线 */
+// export function getVisibleNodesAndLinks(allNodes) {
+//   if (!allNodes || allNodes.length === 0) {
+//     return { visibleNodes: [], visibleLinks: [] }
+//   }
+
+//   const nodeMap = new Map(allNodes.map(n => [n.id, { ...n, children: [] }]))
+//   allNodes.forEach(n => {
+//     if (n.originalParents) {
+//       n.originalParents.forEach(parentId => {
+//         const p = nodeMap.get(parentId)
+//         if (p) p.children.push(n)
+//       })
+//     }
+//   })
+
+//   const hidden = new Set()
+//   allNodes.forEach(node => {
+//     if (node._collapsed) {
+//       findDescendants(node.id, nodeMap).forEach(id => hidden.add(id))
+//     }
+//   })
+
+//   const visibleNodes = allNodes.filter(n => !hidden.has(n.id))
+//   const visibleIds = new Set(visibleNodes.map(n => n.id))
+
+//   const visibleLinks = []
+//   visibleNodes.forEach(n => {
+//     if (n.originalParents) {
+//       n.originalParents.forEach(p => {
+//         if (visibleIds.has(p)) visibleLinks.push({ source: p, target: n.id })
+//       })
+//     }
+//   })
+
+//   return { visibleNodes, visibleLinks }
+// }
 /** 基于 _collapsed 计算可见节点与连线 */
+
 export function getVisibleNodesAndLinks(allNodes) {
   if (!allNodes || allNodes.length === 0) {
     return { visibleNodes: [], visibleLinks: [] }
@@ -138,11 +176,11 @@ export function getVisibleNodesAndLinks(allNodes) {
 
   const nodeMap = new Map(allNodes.map(n => [n.id, { ...n, children: [] }]))
   allNodes.forEach(n => {
-    if (n.originalParents) {
-      n.originalParents.forEach(parentId => {
-        const p = nodeMap.get(parentId)
-        if (p) p.children.push(n)
-      })
+    if (n.originalParents && n.originalParents.length > 0) { // 新增：判断有父节点
+      // 改动1：只取第一个父节点，不再遍历所有parentId
+      const parentId = n.originalParents[0]; 
+      const p = nodeMap.get(parentId)
+      if (p) p.children.push(n)
     }
   })
 
@@ -158,15 +196,16 @@ export function getVisibleNodesAndLinks(allNodes) {
 
   const visibleLinks = []
   visibleNodes.forEach(n => {
-    if (n.originalParents) {
-      n.originalParents.forEach(p => {
-        if (visibleIds.has(p)) visibleLinks.push({ source: p, target: n.id })
-      })
+    if (n.originalParents && n.originalParents.length > 0) { // 新增：判断有父节点
+      // 改动2：只取第一个父节点生成连线，不再遍历所有p
+      const p = (n.originalParents[1])?n.originalParents[1]:n.originalParents[0]; 
+      if (visibleIds.has(p)) visibleLinks.push({ source: p, target: n.id })
     }
   })
 
   return { visibleNodes, visibleLinks }
 }
+
 
 /** 粗略推断当前“卡片类型” */
 function inferCardType(node) {
@@ -816,18 +855,8 @@ export function renderTree(
     // 发送小按钮：挪到 Input Thought 右侧
     const sendBtn = headerRow.append('xhtml:button')
       .html('➤')
-      .style('margin-left', 'auto')
-      .style('width', '14px')
-      .style('height', '14px')
-      .style('border-radius', '999px')
-      .style('border', 'none')
-      .style('background', '#4d4d4f')
-      .style('color', '#ffffff')
-      .style('font-size', '9px')
-      .style('display', 'inline-flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('cursor', 'pointer')
+      .attr('title','save')
+      .attr('class', 'icon-circle-btn output-clip-btn')
       .style('box-shadow', '0 1px 2px rgba(0,0,0,0.15)')
       .on('mousedown', ev => ev.stopPropagation())
 
@@ -1065,18 +1094,8 @@ export function renderTree(
     // Agent button
     const AgentBtn = toolbar.append('xhtml:button')
       .text('A')
-      .style('width', '18px')
-      .style('height', '18px')
-      .style('border-radius', '999px')
-      .style('border', '1px solid #e5e7eb')
-      .style('background', '#ffffff')
-      .style('font-size', '12px')
-      .style('line-height', '1')
-      .style('display', 'inline-flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('color', '#6b7280')
-      .style('cursor', 'pointer')
+      .attr('class', 'icon-circle-btn')
+      .attr('title','agent button')
       .on('mousedown', ev => ev.stopPropagation())
       .on('click', (ev) => {
         ev.stopPropagation();
@@ -1182,6 +1201,8 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
   const promptText = (d.parameters)
     ? (d.parameters.positive_prompt || d.parameters.text || '')
     : '';
+  // console.log(`audio prompt`,promptText)
+  // console.log(`d.parameters`,d.parameters)
 
   const fo = gEl.append('foreignObject')
     .attr('width', d.calculatedWidth)
@@ -1253,10 +1274,7 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
 
   // ↻：根据当前文本重新生成音频
   inputHeader.append('xhtml:div')
-    .style('margin-left', 'auto')
-    .style('cursor', 'pointer')
-    .style('font-size', '10px')
-    .style('color', '#6b7280')
+    .attr('class', 'icon-circle-btn output-clip-btn')
     .text('↻')
     .attr('title', 'Apply & Regenerate')
     .on('mouseenter', function () { d3.select(this).style('color', '#2563eb'); })
@@ -1325,15 +1343,15 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
   outputHeader.append('xhtml:div')
     .style('margin-left', 'auto')
     .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
-    .style('font-size', '10px')
+    .attr('class', 'icon-circle-btn output-clip-btn')
     .style('color', mediaUrl ? '#6b7280' : '#d1d5db')
-    .text('A')
+    .text('☆')
     .attr('title', 'Add to storyboard')
     .on('mousedown', ev => ev.stopPropagation())
     .on('click', ev => {
       ev.stopPropagation();
       if (!mediaUrl) return;
-      emit('add-clip', d, 'audio');
+      emit('add-clip', d, mediaUrl,'audio');
     })
     .on('mouseenter', function () {
       if (!mediaUrl) return;
@@ -1342,6 +1360,7 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
     .on('mouseleave', function () {
       if (!mediaUrl) return;
       d3.select(this).style('color', '#6b7280');
+      
     });
 
   // outputSection.append('xhtml:div')
@@ -1533,19 +1552,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .text('Input');
 
   headerRow.append('xhtml:div')
-    .style('margin-left', 'auto')
-    .style('width', '14px')
-    .style('height', '14px')
-    .style('border-radius', '999px')
-    .style('border', 'none')
-    .style('background', '#ffffffff')
-    .style('color', '#6b7280')
-    .style('font-size', '10px')
-    .style('display', 'inline-flex')
-    .style('align-items', 'center')
-    .style('justify-content', 'center')
-    .style('cursor', 'pointer')
-    .style('border', '1px solid #e5e7eb')
+    .attr('class', 'icon-circle-btn')  // 仅加这个类，无其他新增
     .text('↻')
     .attr('title', 'Apply & Regenerate')
     .on('mouseenter', function () { d3.select(this).style('color', '#2563eb'); })
@@ -1976,6 +1983,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   }
 
 
+ /* ==================== 右侧 Output 列 ==================== */
   /* ==================== 右侧 Output 列 ==================== */
   const right = body.append('xhtml:div')
     .attr('class', 'thin-scroll')
@@ -1989,9 +1997,11 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('position', 'relative')
     .style('overflow-y', 'auto')
     .style('max-height', '100%');
-  
 
-  // Output 头部 + A 按钮（样式跟左侧 Input 一致）
+  // 新增：定义变量存储当前选中的图片/视频 URL
+  let selectedMediaUrl = '';
+
+  // Output 头部 + 五角星按钮（样式跟左侧 Input 一致）
   const outputHeader = right.append('xhtml:div')
     .attr('class', 'io-header');
 
@@ -2001,29 +2011,21 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
   if (canAddToStitch) {
     outputHeader.append('xhtml:div')
-      .style('margin-left', 'auto')
-      .style('width', '14px')
-      .style('height', '14px')
-      .style('border-radius', '999px')
-      .style('border', 'none')
-      .style('background', '#ffffffff')
-      .style('display', 'inline-flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('border', '1px solid #e5e7eb')
-      .attr('class', 'output-clip-btn')   // 注意：不用 add-clip-btn，避免被 hover 逻辑影响
-      .style('cursor', 'pointer')
-      .style('font-size', '10px')
-      .style('color', '#6b7280')
-      .text('A')
+      .attr('class', 'icon-circle-btn')
+      .text('☆')
       .attr('title', 'Add to storyboard')
       .on('mousedown', ev => ev.stopPropagation())
       .on('click', ev => {
         ev.stopPropagation();
-        emit('add-clip', d, isVideo ? 'video' : 'image');
+        // 修复2：确保选中的URL优先，且完全替换d中的mediaUrl
+        const targetUrl = selectedMediaUrl || (isVideo ? videoUrls[0] : imageUrls[0]);
+        if (!targetUrl) return;
+        // 深度克隆d对象，避免修改原对象导致的副作用
+        emit('add-clip', d,targetUrl, isVideo ? 'video' : 'image');
+        console.log('五角星添加的URL：', targetUrl); // 调试确认
       })
       .on('mouseenter', function () {
-        d3.select(this).style('color', '#2563eb');   // hover 变蓝，和左侧 ↻ 类似
+        d3.select(this).style('color', '#2563eb');
       })
       .on('mouseleave', function () {
         d3.select(this).style('color', '#6b7280');
@@ -2034,7 +2036,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   right.append('xhtml:div')
     .attr('class', 'io-divider');
 
-  // 视频预览（自适应 Output 宽度，圆角 + 间距）
+  // 视频预览
   if (videoUrls.length > 0) {
     const videoContainer = right.append('xhtml:div')
       .style('width', '100%')
@@ -2043,22 +2045,61 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       .style('gap', '4px')
       .style('margin-top', '4px');
 
-    videoUrls.forEach(url => {
+    videoUrls.forEach((url, index) => {
       const wrapper = videoContainer.append('xhtml:div')
+        .attr('class', 'media-wrapper') // 新增类名，提升样式优先级
         .style('width', '100%')
-        .style('height', '72px')          // 跟 Input Images 接近的高度
+        .style('height', '72px')          
         .style('border-radius', '4px')
         .style('overflow', 'hidden')
-        .on('mousedown', ev => ev.stopPropagation())
+        .style('pointer-events', 'auto')
+        // 修复1：用 attr 设置内联样式（最高优先级），替代 style()
+        // .attr('style', `
+        //   width: 100%;
+        //   height: 72px;
+        //   border-radius: 4px;
+        //   overflow: hidden;
+        //   pointer-events: auto;
+        //   border: ${index === 0 ? '2px solid #2563eb' : '2px solid transparent'};
+        // `)
         .on('click', ev => {
           ev.stopPropagation();
+          ev.preventDefault();
+          selectedMediaUrl = url;
+          // 修复1：重置所有视频边框（用 attr 覆盖）
+          videoContainer.selectAll('.media-wrapper').attr('style', d => {
+            return `
+              width: 100%;
+              height: 72px;
+              border-radius: 4px;
+              overflow: hidden;
+              pointer-events: auto;
+              border: 2px solid transparent;
+            `;
+          });
+          // 修复1：设置当前选中边框（内联 attr 最高优先级）
+          // d3.select(this).attr('style', `
+          //   width: 100%;
+          //   height: 72px;
+          //   border-radius: 4px;
+          //   overflow: hidden;
+          //   pointer-events: auto;
+          //   border: 2px solid #2563eb !important;
+          // `);
+          console.log('选中视频：', url);
+          console.log('selectedMediaUrl：', selectedMediaUrl);
+        })
+        .on('dblclick', ev => {
+          ev.stopPropagation();
+          ev.preventDefault();
           emit('open-preview', url, 'video');
         });
 
       const v = wrapper.append('xhtml:video')
         .style('width', '100%')
         .style('height', '100%')
-        .style('object-fit', 'cover')     // 按长边裁切
+        .style('object-fit', 'cover')
+        .style('pointer-events', 'none')
         .attr('muted', true)
         .attr('playsinline', true)
         .attr('preload', 'metadata');
@@ -2069,12 +2110,14 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       el.muted = true;
       el.playsInline = true;
       el.src = url;
+
+      // if (index === 0) {
+      //   selectedMediaUrl = url;
+      // }
     });
   }
 
-
-  
-  // 图片预览（自适应 Output 宽度，圆角 + 间距）
+  // 图片预览
   if (imageUrls.length > 0) {
     const imgContainer = right.append('xhtml:div')
       .style('width', '100%')
@@ -2085,25 +2128,68 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
     imageUrls.forEach((url, index) => {
       const wrapper = imgContainer.append('xhtml:div')
+        .attr('class', 'media-wrapper') // 新增类名
         .style('width', '100%')
-        .style('height', '72px')          // 和视频统一
+        .style('height', '72px')          
         .style('border-radius', '4px')
         .style('overflow', 'hidden')
-        .on('mousedown', ev => ev.stopPropagation())
+        .style('pointer-events', 'auto')
+        // 修复1：内联 attr 设置边框（最高优先级）
+        // .attr('style', `
+        //   width: 100%;
+        //   height: 72px;
+        //   border-radius: 4px;
+        //   overflow: hidden;
+        //   pointer-events: auto;
+        //   border: ${index === 0 ? '2px solid #2563eb' : '2px solid transparent'};
+        // `)
         .on('click', ev => {
           ev.stopPropagation();
+          ev.preventDefault();
+          selectedMediaUrl = url;
+          // 修复1：重置所有图片边框
+          imgContainer.selectAll('.media-wrapper').attr('style', d => {
+            return `
+              width: 100%;
+              height: 72px;
+              border-radius: 4px;
+              overflow: hidden;
+              pointer-events: auto;
+              border: 2px solid transparent;
+            `;
+          });
+          // 修复1：设置当前选中边框
+          // d3.select(this).attr('style', `
+          //   width: 100%;
+          //   height: 72px;
+          //   border-radius: 4px;
+          //   overflow: hidden;
+          //   pointer-events: auto;
+          //   border: 2px solid #2563eb !important;
+          // `);
+          console.log('选中图片：', url);
+          console.log('selectedMediaUrl：', selectedMediaUrl);
+        })
+        .on('dblclick', ev => {
+          ev.stopPropagation();
+          ev.preventDefault();
           emit('open-preview', url, 'image');
         });
 
       wrapper.append('xhtml:img')
-          .attr('src', url)
-          .attr('alt', `Output image ${index + 1}`)
-          .style('width', '100%')
-          .style('height', '100%')
-          .style('object-fit', 'cover')     // 填满 Output 区宽度
-          .style('display', 'block');
-      });
-    }
+        .attr('src', url)
+        .attr('alt', `Output image ${index + 1}`)
+        .style('width', '100%')
+        .style('height', '100%')
+        .style('object-fit', 'cover')
+        .style('display', 'block')
+        .style('pointer-events', 'none');
+
+      // if (index === 0 && videoUrls.length === 0) {
+      //   selectedMediaUrl = url;
+      // }
+    });
+  }
 
     /* ==================== 右下角拖拽：只改变节点高度 ==================== */
   const resizeHandle = card.append('xhtml:div')
@@ -2219,19 +2305,8 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
   // 右侧小 A 按钮：调用 Agent 选择工作流
   const opAgentBtn = opHeader.append('xhtml:button')
     .text('A')
-    .style('margin-left', 'auto')
-    .style('width', '14px')
-    .style('height', '14px')
-    .style('border-radius', '999px')
-    .style('border', '1px solid #e5e7eb')
-    .style('background', '#ffffff')
-    .style('font-size', '9px')
-    .style('line-height', '1')
-    .style('display', 'inline-flex')
-    .style('align-items', 'center')
-    .style('justify-content', 'center')
-    .style('color', '#6b7280')
-    .style('cursor', 'pointer')
+    .attr('class', 'icon-circle-btn')
+    .attr('title','agent button')
     .on('mousedown', ev => ev.stopPropagation())
     .on('mouseenter', function () {
       d3.select(this)
@@ -2250,7 +2325,8 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     d.parameters?.positive_prompt ||
     d.parameters?.global_context ||
     ''
-
+  const hasMedia = !!(d.assets && d.assets.input && d.assets.input.images && d.assets.input.images.length > 0)
+  const mediaUrl = hasMedia ? d.assets.input.images : ''
   const opTextArea = opSection.append('xhtml:textarea')
     .attr('class', 'thin-scroll')
     .style('flex', '1 1 auto')
@@ -2280,10 +2356,11 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
   // Agent 按钮点击：调用后端 /api/agents/process
   opAgentBtn.on('click', ev => {
     ev.stopPropagation()
-
+    clearPrevAgentContext();
     const payload = {
       user_input: opTextArea.property('value') || '',
       node_id: d.id,
+      image_url: mediaUrl || '',
       workflow_context: {
         current_workflow: d.module_id,
         parent_nodes: d.originalParents || []
@@ -2298,6 +2375,17 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
       .then(res => res.json())
       .then(data => {
         console.log('Agent处理结果 (Workflow Planning):', data)
+        const agentContext = {
+            global_context: data.global_context || '',
+            intent: data.intent || '',
+            selected_workflow: data.selected_workflow || '',
+            knowledge_context: data.knowledge_context || '',
+            image_caption: data.image_caption || '',
+            style: data.style || ''
+          };
+          // 存储到共享工具中（关键步骤）
+          setPrevAgentContext(agentContext);
+
         const rawWorkflowId = data.selected_workflow || ''
         const workflowId = rawWorkflowId.replace('.json', '')
         const workflow_title = data.workflow_title
@@ -2317,10 +2405,12 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
           const updatedParams = {
             ...defaultParams,
             positive_prompt: data.message?.positive || defaultParams.positive_prompt || '',
-            negative_prompt: data.message?.negative || defaultParams.negative_prompt || ''
+            negative_prompt: data.message?.negative || defaultParams.negative_prompt || '',
+            text:data.message?.text || ''
           }
 
           d.parameters = updatedParams
+          //console.log(`add workflow agent`,d.parameters)
           emit('refresh-node', d.id, workflowId, d.parameters, workflow_title)
         })
       })
@@ -2344,19 +2434,8 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
   // 右侧黄色小圆点 + 号按钮
   const addImgBtn = imgHeader.append('xhtml:button')
     .text('+')
-    .style('margin-left', 'auto')
-    .style('width', '14px')
-    .style('height', '14px')
-    .style('border-radius', '999px')
-    .style('border', 'none')
-    .style('background', '#ffffffff')
-    .style('color', '#6b7280')
-    .style('font-size', '10px')
-    .style('display', 'inline-flex')
-    .style('align-items', 'center')
-    .style('justify-content', 'center')
-    .style('cursor', 'pointer')
-    .style('border', '1px solid #e5e7eb')
+    .attr('class', 'icon-circle-btn')
+    .attr('title','add image')
     .on('mousedown', ev => ev.stopPropagation())
 
   // 预览区域：固定高度，水平滚动

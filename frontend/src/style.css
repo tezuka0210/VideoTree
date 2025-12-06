@@ -1141,3 +1141,36 @@ body {
 }
 
 
+/* 节点内部按钮 */
+/* 公共圆形按钮样式（抽离所有重复属性） */
+.icon-circle-btn {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px; /* 圆形 */
+  border: 1px solid #e5e7eb !important; /* 覆盖内联的 border: none */
+  background: #ffffffff !important;
+  color: #6b7280 !important;
+  font-size: 10px !important;
+  display: inline-flex !important;
+  align-items: center !important; /* 垂直居中 */
+  justify-content: center !important; /* 水平居中 */
+  cursor: pointer !important;
+  /* 可选：添加过渡，hover 颜色变化更丝滑 */
+  transition: color 0.2s ease;
+}
+
+/* hover 高亮样式（替代 JS 的 mouseenter/mouseleave） */
+.icon-circle-btn:hover {
+  color: #ffffffff !important; /* 文字变白色（原背景色） */
+  background: #6b7280 !important; /* 背景变蓝色（原文字高亮色） */
+  border-color: #6b7280 !important; /* 边框同步背景色，视觉更统一 */
+}
+
+/* 禁用状态（如果需要） */
+.icon-circle-btn:disabled,
+.icon-circle-btn.disabled {
+  cursor: not-allowed !important;
+  color: #d1d5db !important;
+  border-color: #e5e7eb !important;
+}

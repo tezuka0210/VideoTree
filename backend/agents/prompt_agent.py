@@ -3,6 +3,66 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from .state import AgentState
 
+# --- 1. 定义两套完全独立的 System Prompt ---
+
+# A. 视觉模式提示词 (用于生图/生视频)
+VISUAL_SYSTEM_PROMPT = """
+You are an expert Stable Diffusion/FLUX Prompt Engineer for ComfyUI.
+Your goal is to generate a list of weighted tags for visual generation based on the inputs.
+
+Context Inputs:
+- Global Context (Base): {global_context}
+- Local Instruction (Edit): {user_input}
+- Visual Style: {style}
+- Entity Knowledge: {knowledge}
+
+Instructions:
+1. **Context Fusion:** Merge User Input > Global Context > Knowledge.
+2. **Weighting Logic:**
+   - High (1.3-1.6) for User Input keywords.
+   - Standard (1.0-1.2) for Global Context/Knowledge.
+   - Format: `(keyword:weight)`.
+3. **Formatting Rules:**
+   - **Positive:** Comma-separated phrases (≤5 words each). Focus on lighting, texture, composition.
+   - **Negative:** Standard quality artifacts (e.g., "bad anatomy, blurry").
+   - Output ONLY valid JSON.
+
+**Example Output:**
+{{
+    "positive": "(hold teacup:1.5), (Song Dynasty scholar:1.2), (celadon teacup:1.1), (warm glaze:1.0), (soft natural light:1.0)",
+    "negative": "(bad anatomy:1.2), (blurry:1.3), (worst quality:1.4)"
+}}
+"""
+
+# B. 音频模式提示词 (用于生旁白/TTS)
+AUDIO_SYSTEM_PROMPT = """
+You are an expert Scriptwriter for AI Text-to-Speech (TTS) narration.
+Your goal is to write a fluent, engaging speech script based on the inputs.
+
+Context Inputs:
+- Narrative Context: {global_context}
+- Specific Request: {user_input} (May contain duration info, e.g., "5 seconds")
+- Tone/Style: {style}
+- Detailed Info: {knowledge}
+
+Instructions:
+1. **Goal:** Write a natural narrative sentence or paragraph that describes the scene or tells the story.
+2. **Duration Control (CRITICAL):**
+   - Analyze '{user_input}' for duration constraints.
+   - Estimate length: Approx. 2.5 words per second.
+   - If user asks for 5 seconds, write about 10-15 words.
+3. **Formatting Rules:**
+   - **text:** Full, grammatically correct English sentences.
+   - **NO weighting syntax** (e.g., NO `(word:1.2)`).
+   - **NO lists of keywords**. Write like a novelist or documentary narrator.
+   - Output ONLY valid JSON.
+
+**Example Output:**
+{{
+    "text": "Under the vast starry sky, the ancient stone ruins whisper secrets of the past to the cool night breeze."
+}}
+"""
+
 def prompt_agent_node(state: AgentState):
     print("--- Running Prompt Agent ---")
 
@@ -14,58 +74,27 @@ def prompt_agent_node(state: AgentState):
     knowledge = state.get("knowledge_context", "")
     selected_workflow = state.get("selected_workflow", "")
     global_context = state.get("global_context","")
-
-    print(user_input)
-    print(global_context)
+    print("global_context_prompt",global_context)
 
     # 2. Initialize LLM
     llm = ChatOpenAI(
         model="gpt-4o",
-        temperature=0.7, # Slightly creative
+        temperature=0.7,
         model_kwargs={"response_format": {"type": "json_object"}}
     )
 
-    # 3. System Prompt
-    system_prompt = """
-        You are an expert Stable Diffusion/FLUX Prompt Engineer for ComfyUI, specializing in Cinematic and Cultural Heritage content.
-        Your goal is to synthesize a FINAL rendering prompt by merging "Global Context" (scene persistence), "Local Instruction" (user's latest edit), and "Entity Knowledge" (detailed entity information) to create vivid, accurate, and visually rich imagery.
+    # 3. 【核心修改】在 Python 层进行逻辑分发
+    # 根据 workflow 文件名选择不同的 System Prompt
+    if "Audio" in selected_workflow or "TextToAudio" in selected_workflow:
+        print("  - Mode: AUDIO Scripting")
+        system_prompt = AUDIO_SYSTEM_PROMPT
+    else:
+        print("  - Mode: VISUAL Prompting")
+        system_prompt = VISUAL_SYSTEM_PROMPT
 
-        Context Inputs:
-        - Global Context (The Base): {global_context}  # Foundational scene description (background, atmosphere, main subject identity)
-        - Local Instruction (The Edit): {user_input}   # User's latest modification request
-        - Visual Style: {style}                       # Aesthetic requirements (e.g., cinematic, photorealistic, traditional Chinese painting)
-        - Reference Image Content: {image_caption}    # Key visual elements from reference image
-        - Entity Knowledge: {knowledge}               # Professional knowledge about key entities (e.g., materials, textures, shapes, historical details of cultural relics/objects)
-
-        Instructions:
-        1. **Context Fusion Strategy (CRITICAL):**
-        - Priority Order: {user_input} > {global_context} > {knowledge}  # User instruction takes precedence; knowledge supplements details
-        - Use {knowledge} to enhance specificity: Convert entity features (material, texture, form, historical context) into precise visual keywords.
-          Example: Knowledge = "Blue and white porcelain: White base with blue patterns, glossy glaze, interlocking lotus motifs" 
-          → Converted to: (white base blue patterns:1.2), (glossy glaze:1.1), (interlocking lotus motifs:1.1)
-        - If {knowledge} is empty, ignore this section without affecting core logic.
-
-        2. **Weighting Logic (ComfyUI Syntax):**
-        - Higher Weights (1.3 - 1.6): Keywords derived from {user_input} (ensure user's edit is prioritized)
-        - Standard Weights (1.0 - 1.2): Keywords from {global_context} + {knowledge} (maintain scene consistency and detail accuracy)
-        - Format: (keyword:weight) — No spaces inside parentheses. Example: (looking up:1.5), (Song Dynasty scholar:1.2), (glossy porcelain:1.1)
-
-        3. **Formatting Rules (STRICTLY FOLLOW):**
-        - Positive Prompt: Comma-separated phrases (MAX 5 words per phrase). Focus on:
-          ① Core user instruction ② Global scene elements ③ Knowledge-enhanced entity details ④ Lighting/texture/composition
-        - Negative Prompt: Standard quality assurance tags to avoid artifacts (e.g., bad anatomy, blurry, low resolution)
-        - Output ONLY valid JSON (no markdown, no conversational text, no extra explanations)
-        - Use English vocabulary exclusively (match ComfyUI's prompt conventions)
-
-        Output JSON Example (with Entity Knowledge):
-        {{
-            "positive": "(hold teacup:1.5), (Song Dynasty scholar:1.2), (celadon teacup:1.1), (round cup body:1.0), (warm glaze:1.0), (soft natural light:1.0), (detailed robe patterns:1.1)",
-            "negative": "(bad anatomy:1.2), (blurry:1.3), (worst quality:1.4), (distorted porcelain:1.2), (low res:1.3)"
-        }}
-    """
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
-        ("user", "User Request: {user_input} | Intent: {intent}")
+        ("user", "User Request: {user_input}")
     ])
 
     # 4. Execute
@@ -74,22 +103,19 @@ def prompt_agent_node(state: AgentState):
     result = chain.invoke({
         "style": style,
         "knowledge": knowledge,
-        "image_caption": image_caption,
-        "workflow": selected_workflow,
-        "user_input": user_input,
-        "intent": intent,
-        "global_context":global_context
+        # image_caption 在音频模式下可能不重要，但在视觉模式下有用
+        # 你可以根据需要决定是否传入，或者在 Prompt 里统一留个占位符
+        "global_context": global_context,
+        "user_input": user_input
     })
 
     # 5. Parse and Return
     try:
         final_prompts = json.loads(result.content)
     except json.JSONDecodeError:
-        final_prompts = {
-            "positive": user_input,
-            "negative": "bad quality, low res"
-        }
+        print("Error: JSON Decode Failed")
+        final_prompts = {"error": "failed"}
 
-    print("AGENCY: Prompt Agent Generated Prompts.")
+    print(f"AGENCY: Prompt Agent Generated: {final_prompts}")
 
     return {"final_prompt": final_prompts}

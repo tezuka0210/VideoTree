@@ -338,6 +338,7 @@ def process_agent_request():
         image_url = data.get('image_url', '')
         workflow_context = data.get('workflow_context', {})
         global_context = database.find_global_context(node_id)
+        print("global_context",global_context)
 
         # 处理 image_url 可能是数组、无效类型的情况
         if isinstance(image_url, list) and len(image_url) > 0:
@@ -369,7 +370,7 @@ def process_agent_request():
             
         # 2. 准备agent所需的状态
         mock_state = {
-            "global_input":global_context,
+            "global_context":global_context,
             "user_input": user_input,
             "intent": user_input,
             "image_data": image_base64,  # 传给master_agent的图片数据（URL格式）
@@ -776,17 +777,51 @@ def create_node():
         if final_module_id == 'AddText':
             print(">>> 检测到 AddText 模块，仅保存文本节点到数据库。")
             # "AddText" 模块没有 ComfyUI 操作，它只保存节点
-            database.update_node(
-                node_id=node_id,
-                payload={
-                    "title": node_title,
-                    "module_id": module_id_from_frontend,
-                    "assets": {},
-                    "parameters": parameters,
-                    "status":'completed'
-                }
-            )
-
+            # 情况1：判断 parameters 是否为空（空字典/None/空值）
+            def is_parameters_empty(params):
+                if not params:  # 处理 None/空字典/空字符串等
+                    return True
+                # 如果是字典，判断是否有有效键值对（排除全为空的值）
+                if isinstance(params, dict):
+                    return all(not v for v in params.values())
+                # 其他类型（如字符串）判断是否为空
+                return not params
+            
+            # 判断参数是否有值
+            parameters_has_value = not is_parameters_empty(parameters)
+            
+            # 分支逻辑：有值更新，无值新增
+            if parameters_has_value:
+                print(f">>> 参数有值，更新节点 {node_id}")
+                # 更新现有节点
+                update_success = database.update_node(
+                    node_id=node_id,
+                    payload={
+                        "title": node_title,
+                        "module_id": module_id_from_frontend,
+                        "assets": {},
+                        "parameters": parameters,
+                        "status": 'completed'
+                    }
+                )
+                if not update_success:
+                    raise Exception(f"更新 AddText 节点 {node_id} 到数据库失败。")
+            else:
+                print(f">>> 参数无值，新增 AddText 节点")
+                # 新增节点（保留原有新增逻辑）
+                new_node_id = database.add_node(
+                    node_id=node_id,
+                    tree_id=tree_id,
+                    parent_ids=parent_ids,
+                    module_id=module_id_from_frontend,
+                    parameters=parameters,
+                    title='AddText',
+                    assets={},  # 没有媒体资源
+                    status='completed'
+                )
+                if not new_node_id:
+                    raise Exception("保存 AddText 节点到数据库失败。")
+            
             # 返回更新后的树
             updated_tree = database.get_tree_as_json(tree_id)
             return jsonify(updated_tree), 201
@@ -794,18 +829,51 @@ def create_node():
         if final_module_id == 'AddWorkflow':
             print(">>> 检测到 AddWorkflow 模块，仅保存文本节点到数据库。")
             # "AddWorkflow" 模块没有 ComfyUI 操作，它只保存节点
-            database.update_node(
-                node_id=node_id,
-                payload={
-                    "title": node_title,
-                    "module_id": module_id_from_frontend,
-                    "assets": {},
-                    "parameters": parameters,
-                    "status":'completed'
-                }
-            )
+            # 情况1：判断 parameters 是否为空（空字典/None/空值）
+            def is_parameters_empty(params):
+                if not params:  # 处理 None/空字典/空字符串等
+                    return True
+                # 如果是字典，判断是否有有效键值对（排除全为空的值）
+                if isinstance(params, dict):
+                    return all(not v for v in params.values())
+                # 其他类型（如字符串）判断是否为空
+                return not params
             
-
+            # 判断参数是否有值
+            parameters_has_value = not is_parameters_empty(parameters)
+            
+            # 分支逻辑：有值更新，无值新增
+            if parameters_has_value:
+                print(f">>> 参数有值，更新节点 {node_id}")
+                # 更新现有节点
+                update_success = database.update_node(
+                    node_id=node_id,
+                    payload={
+                        "title": node_title,
+                        "module_id": module_id_from_frontend,
+                        "assets": {},
+                        "parameters": parameters,
+                        "status": 'completed'
+                    }
+                )
+                if not update_success:
+                    raise Exception(f"更新 AddWorkflow 节点 {node_id} 到数据库失败。")
+            else:
+                print(f">>> 参数无值，新增 AddWorkflow 节点")
+                # 新增节点（保留原有新增逻辑）
+                new_node_id = database.add_node(
+                    node_id=node_id,
+                    tree_id=tree_id,
+                    parent_ids=parent_ids,
+                    module_id=module_id_from_frontend,
+                    parameters=parameters,
+                    title='AddWorkflow',
+                    assets={},  # 没有媒体资源
+                    status='completed'
+                )
+                if not new_node_id:
+                    raise Exception("保存 AddWorkflow 节点到数据库失败。")
+            
             # 返回更新后的树
             updated_tree = database.get_tree_as_json(tree_id)
             return jsonify(updated_tree), 201
@@ -857,11 +925,47 @@ def create_node():
                 prompt_id = queued_prompt['prompt_id']
                 # 使用WebSocket等待并获取输出
                 merge_outputs = get_comfyui_outputs(prompt_id)
+                print("merge_outputs",merge_outputs)
 
-                parsed_url = urllib.parse.urlparse(batch_outputs.get("images", []))
+                # 1. 提取 images 列表中的 URL 字符串（核心修复：列表取第一个元素）
+                merge_image_urls = merge_outputs.get("images", [])
+                if not merge_image_urls:
+                    raise Exception("ImageMerging 工作流执行成功，但未返回任何图片URL")
+                merge_image_url = merge_image_urls[0]  # 取第一个URL字符串（解决list无get的问题）
+                
+                # 2. 解析 URL 中的 filename 参数（从URL中提取文件名）
+                parsed_url = urllib.parse.urlparse(merge_image_url)
                 query_params = urllib.parse.parse_qs(parsed_url.query)
                 merge_filename_merge = query_params.get('filename', [None])[0]
-                # 信息注入
+                if not merge_filename_merge:
+                    raise Exception("从图片URL中解析 filename 失败: " + merge_image_url)
+                print(f"    - 从URL解析出合并后的文件名: {merge_filename_merge}")
+                
+                # 3. 定义路径并复制文件到 input 目录
+                # 确保 COMFYUI_OUTPUT_PATH/COMFYUI_INPUT_PATH 已定义（按需修改路径）
+                # 若未全局定义，取消下面注释并修改为实际路径
+                # COMFYUI_OUTPUT_PATH = "/home/zhengzy/comfyui/comfyui/output"
+                # COMFYUI_INPUT_PATH = "/home/zhengzy/comfyui/comfyui/input"
+                
+                # 拼接完整路径
+                output_img_path = os.path.join(COMFYUI_OUTPUT_PATH, merge_filename_merge)
+                input_img_path = os.path.join(COMFYUI_INPUT_PATH, merge_filename_merge)
+                
+                # 确保 input 目录存在
+                os.makedirs(COMFYUI_INPUT_PATH, exist_ok=True)
+                
+                # 检查 output 目录文件是否存在
+                if not os.path.exists(output_img_path):
+                    raise FileNotFoundError(f"合并后的图片在 output 目录不存在: {output_img_path}")
+                
+                # 4. 复制文件到 input 目录
+                try:
+                    shutil.copy2(output_img_path, input_img_path)
+                    print(f"    - 已将合并后的图片复制到 input 目录: {input_img_path}")
+                except Exception as e:
+                    raise Exception(f"复制图片到 input 目录失败: {str(e)}")
+                
+                # 5. 注入 input 目录下的文件名
                 image_filenames["LoadImage"] = merge_filename_merge
                 final_module_id = module_id_from_frontend
                 workflow = load_workflow(final_module_id)            

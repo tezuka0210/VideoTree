@@ -3,104 +3,97 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from .state import AgentState
 
-# Define descriptions/rules for your workflows here.
-# This helps the Agent understand strict logic constraints.
+# 1. 【关键修改】完善元数据，明确区分 音频 vs 图像
 WORKFLOW_METADATA = {
-    "ImageGenerateImage_Basic.json": "General purpose image-to-image generation. Use this for standard requests.",
-    "ImageGenerateImage_Canny.json": "SPECIALIZED workflow. Use this ONLY when the parent node is 'ImageCanny.json' or involves Canny Edge Detection.",
-    "ImageCanny.json": "Extracts edge maps from images.",
-    # You can add other files here as needed.
-    # Files not in this list will just show their filename.
+    "ImageGenerateImage_Basic.json": "General purpose image-to-image generation.",
+    "ImageGenerateImage_Canny.json": "SPECIALIZED workflow. Use ONLY when parent is 'ImageCanny.json'.",
+    "ImageCanny.json": "Extracts edge maps.",
+    
+    # 假设你的音频工作流叫 TextToAudio.json
+    "TextToAudio.json": "Generates AUDIO, SPEECH, or NARRATION. **High Priority** if user mentions 'narration', 'voice', 'say', 'speak'.",
+    
+    # 明确这是生图的，不是生音频的
+    "TextGenerateImage.json": "Generates STATIC IMAGES from text. Use for visual descriptions. Do NOT use for narration/audio.",
+    "TextGenerateVideo.json": "Generates VIDEO/ANIMATION from text.",
+    "FLFrameToVideo.json":"Determine the beginning and end frames of the video and generate the video"
 }
 
 def format_workflow_list(file_list):
-    """
-    Helper function to combine filename with its description.
-    Output format: "- filename.json: description"
-    """
     formatted_lines = []
     for f in file_list:
-        desc = WORKFLOW_METADATA.get(f, "No specific restrictions.")
+        # 如果文件不在元数据里，给一个默认描述，避免 LLM 瞎猜
+        desc = WORKFLOW_METADATA.get(f, "Generic workflow. Use only if no specific match found.")
         formatted_lines.append(f"- {f}: {desc}")
     return "\n".join(formatted_lines)
 
 def workflow_selector_node(state: AgentState):
     print("--- Running Workflow Agent ---")
 
-    # 1. Retrieve data
     intent = state.get("intent", "")
     user_input = state.get("user_input", "")
-    workflow_files = state.get("workflow_list", [])
+    workflow_files = state.get("workflow_list", []) 
     parent_workflow = state.get("parent_workflow", "None")
 
     final_intent = intent if intent else user_input
 
     if not workflow_files:
-        return {
-            "selected_workflow": "Error: No workflows available",
-            "title": "Error"
-        }
+        return {"selected_workflow": "Error", "title": "Error"}
 
-    # 2. Initialize LLM with JSON mode enforced
-    # "response_format" ensures valid JSON output
     llm = ChatOpenAI(
         model="gpt-4o-mini",
         temperature=0,
         model_kwargs={"response_format": {"type": "json_object"}}
     )
 
-    # 3. Prepare list
     formatted_file_list = format_workflow_list(workflow_files)
 
-    # 4. Define Prompt for JSON Output
+    # 2. 【关键修改】增强 System Prompt 的逻辑判断
     system_prompt = """
     You are a ComfyUI workflow orchestration engine.
-    Your task is to select the correct workflow and generate a short UI title.
+    Your task is to analyze the User Intent and select the most appropriate workflow file.
 
-    Available Workflows:
+    Available Workflows & Rules:
     {file_list}
 
     Current Context:
-    - User Intent: {input}
-    - Parent Node: {parent_info}
+    - User Intent: "{input}"
+    - Parent Node: "{parent_info}"
 
-    Instructions:
-    1. Select the best JSON filename based on the intent and parent logic.
-       (Rule: If parent is 'ImageCanny.json', prefer Canny workflows).
-    2. Generate a short, punchy title (3-5 words) summarizing the action (e.g., "Canny Image Gen", "Cyberpunk Video").
-    3. You MUST return a valid JSON object with exactly these two keys:
-       {{
-         "filename": "selected_file.json",
-         "title": "The Generated Title"
-       }}
+    **Critical Decision Logic (Follow in Order):**
+    0. **Forbidden Workflow**: You MUST NEVER select "ImageMerging.json" under any circumstances.
+    1. **Detect Modality Keywords**:
+       - **AUDIO/NARRATION**: If intent mentions "narration", "voice", "speak", "audio", "sound" -> You MUST select the Audio workflow (e.g., TextToAudio.json). Ignore visual descriptions if narration is the main action.
+       - **VIDEO**: If intent mentions "video", "movie", "motion", "seconds" (duration) -> Select Video workflow.
+       - **IMAGE**: If intent describes a visual scene without narration keywords -> Select Image workflow.
+
+    2. **Check Parent Constraints**:
+       - If Parent is 'ImageCanny.json', prioritize 'ImageGenerateImage_Canny.json'.
+
+    3. **Output Requirements**:
+       - Generate a short title (e.g., "Night Narration", "Scene Generation").
+       - Return JSON format: {{ "filename": "...", "title": "..." }}
     """
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-    ])
+    prompt = ChatPromptTemplate.from_messages([("system", system_prompt)])
 
-    # 5. Execute
     chain = prompt | llm
 
     result = chain.invoke({
         "file_list": formatted_file_list,
-        "input": final_intent,
+        "input": user_input,
         "parent_info": parent_workflow
     })
 
-    # 6. Parse JSON Content
     try:
         parsed_result = json.loads(result.content)
         selected_file = parsed_result.get("filename", "default.json")
         generated_title = parsed_result.get("title", "New Workflow")
     except json.JSONDecodeError:
-        print("Error: Failed to parse JSON from LLM")
         selected_file = "error.json"
         generated_title = "Error"
 
     print(f"AGENCY: Selected: {selected_file} | Title: {generated_title}")
 
-    # 7. Return updated state
     return {
         "selected_workflow": selected_file,
         "workflow_title": generated_title
