@@ -14,11 +14,12 @@
           <span class="session-count">{{ sessions.length }} {{ sessions.length === 1 ? 'session' : 'sessions' }}</span>
         </div>
 
-        <!-- 新建按钮 -->
+        <!-- 新建按钮 - 添加点击状态绑定 -->
         <button
-          @click="createNewSession"
+          @click="createNewSession; isNewSessionBtnClicked = true"
           type="button"
           class="new-session-btn"
+          :class="{ 'clicked': isNewSessionBtnClicked }"
           title="New Session"
         >
           <div class="btn-content">
@@ -82,6 +83,8 @@ const sessions = ref<Session[]>([
 ])
 
 const currentSessionId = ref<number>(1)
+// 添加按钮点击状态
+const isNewSessionBtnClicked = ref<boolean>(false)
 
 // 选择会话
 function selectSession(id: number) {
@@ -200,32 +203,112 @@ function deleteSession(id: number) {
   border-radius: 100px;
 }
 
-/* 新建会话按钮 */
+/* 新建会话按钮 - 核心修改 */
 .new-session-btn {
+  padding: 6px 12px;
   width: 100%;
   aspect-ratio: 5/1;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed #d1d5db;
+  border: 2px dashed transparent; /* 默认透明边框 */
   border-radius: 16px;
-  background: transparent;
+  background: white; /* 始终保持白底 */
   color: #6b7280;
   cursor: pointer;
-  transition: all 0.3s ease;
-  transform: scale(1);
+  transition: all 0.2s ease;
 }
 
+/* 按钮点击后状态 - 显示边框 */
+.new-session-btn.clicked {
+  border: 2px solid #6b7280; /* 点击后显示灰色实线边框 */
+  background: white; /* 保持白底 */
+}
+
+/* hover状态优化 */
 .new-session-btn:hover {
-  border-color: #6b7280; /* 灰色 hover */
-  background: #f3f4f6; /* 浅灰色背景 */
-  color: #4b5563; /* 深灰色文字 */
+  border-color: #6b7280; /* hover时显示边框 */
+  background: white; /* 保持白底 */
+  color: #4b5563;
   box-shadow: 0 2px 8px rgba(107, 114, 128, 0.1);
   transform: scale(1.01);
 }
 
+/* 点击active状态 */
 .new-session-btn:active {
   transform: scale(0.98);
+  background: white; /* 保持白底 */
+}
+
+/* 会话列表项 - 调整active状态为白底边框 */
+.session-item {
+  padding: 2px 4px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent; /* 默认透明边框 */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white; /* 始终保持白底 */
+  color: #858b99;
+}
+
+.session-item:hover {
+  background: white; /* 保持白底 */
+  border-color: #e5e7eb; /* hover显示浅灰边框 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* 选中状态 - 白底+边框 */
+.session-item.active {
+  background: white; /* 改为白底 */
+  color: #272b33; /* 保持灰色文字 */
+  /*border-color: #6b7280; /* 显示灰色边框 */
+  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.1);
+}
+
+.session-item:focus {
+  outline: 2px solid rgba(107, 114, 128, 0.5);
+  outline-offset: 2px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d1d5db;
+}
+
+.session-item.active .status-dot {
+  background: #272b33; /* 选中时圆点改为灰色 */
+}
+
+.session-title {
+  line-height: 1.4;
+  word-break: break-word;
+  flex: 1;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* 调整应用按钮内边距 */
+.apply-btn {
+  padding: 4px 0;
+  width: 100%;
+  background: white; /* 白底 */
+  color: #6b7280; /* 灰字 */
+  border: 1px solid #e5e7eb; /* 始终显示边框 */
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.apply-btn:hover {
+  border-color: #6b7280; /* hover加深边框 */
+  background: white; /* 保持白底 */
 }
 
 .btn-content {
@@ -240,6 +323,7 @@ function deleteSession(id: number) {
   transition: transform 0.3s ease;
   border-radius: 50%;
   padding: 2px;
+  color: #6b7280;
 }
 
 .new-session-btn:hover .btn-icon {
@@ -318,57 +402,6 @@ function deleteSession(id: number) {
   opacity: 0.7;
 }
 
-/* 会话列表项 */
-.session-item {
-  padding: 14px 16px;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #f9fafb;
-  color: #374151;
-}
-
-.session-item:hover {
-  background: #f3f4f6;
-  border-color: #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.session-item.active {
-  background: #6b7280; /* 灰色主色 */
-  color: white;
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
-  border-color: #4b5563; /* 深灰色边框 */
-}
-
-.session-item:focus {
-  outline: 2px solid rgba(107, 114, 128, 0.5);
-  outline-offset: 2px;
-}
-
-.status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #d1d5db;
-}
-
-.session-item.active .status-dot {
-  background: white;
-}
-
-.session-title {
-  line-height: 1.4;
-  word-break: break-word;
-  flex: 1;
-  font-weight: 500;
-  font-size: 14px;
-}
-
 /* 删除按钮 */
 .delete-btn {
   width: 32px;
@@ -394,12 +427,12 @@ function deleteSession(id: number) {
 }
 
 .session-item.active .delete-btn {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+  background: #ffffff;
+  color: #4b5563;
 }
 
 .session-item.active .delete-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: #ffffff;
 }
 
 .delete-icon {

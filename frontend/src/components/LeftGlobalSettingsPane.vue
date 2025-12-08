@@ -96,7 +96,7 @@ const temperature = ref(0.7)
   width: 100%;
   max-width: 380px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 2px 16px;
 }
 
 /* 设置卡片主体 - 视觉统一 */
@@ -163,7 +163,7 @@ const temperature = ref(0.7)
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
 }
 
 .form-label {
@@ -179,7 +179,7 @@ const temperature = ref(0.7)
   width: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 8px 12px;
+  padding: 1px 12px;
   font-size: 14px;
   color: #374151;
   background: #ffffff;
@@ -289,11 +289,11 @@ const temperature = ref(0.7)
 
 .apply-btn {
   width: 100%;
-  padding: 10px 0;
-  background: #6b7280; /* 灰色按钮 */
-  color: white;
-  border: none;
-  border-radius: 12px;
+  padding: 4px 0;
+  background: white; /* 灰色按钮 */
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -301,7 +301,9 @@ const temperature = ref(0.7)
 }
 
 .apply-btn:hover {
-  background: #4b5563; /* 深灰色 hover */
+  color: #2d3038;
+  border: 1px solid #3e4144;
+  background: #ffffff; /* 深灰色 hover */
   box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
 }
 
@@ -311,6 +313,6 @@ const temperature = ref(0.7)
 
 .apply-btn:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(107, 114, 128, 0.3);
+  box-shadow: 0 0 0 2px rgba(225, 234, 252, 0.3);
 }
 </style>

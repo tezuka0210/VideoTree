@@ -544,9 +544,9 @@ const getBufferMeta = (clip: any): string => {
   margin-top: 6px;
   width: 100%;
   padding: 4px 0;
-  background: #6b7280; /* 主灰色 */
-  color: white;
-  border: none;
+  background: white; /* 主灰色 */
+  color: #6b7280;
+  border: 1px solid #9ca3af;
   border-radius: 7px; /* 统一的圆角 */
   font-size: 14px;
   font-weight: 500;
@@ -556,7 +556,9 @@ const getBufferMeta = (clip: any): string => {
 
 /* 按钮 hover 状态 */
 .stitch-btn:not(:disabled):hover {
-  background: #4b5563; /* 深灰色 */
+  color: #242830;
+  background: white; /* 深灰色 */
+  border: 1px solid #242830;
   box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
 }
 
@@ -567,7 +569,7 @@ const getBufferMeta = (clip: any): string => {
 
 /* 禁用状态 */
 .stitch-btn:disabled {
-  background: #9ca3af; /* 浅灰色 */
+  background: #ffffff; /* 浅灰色 */
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
