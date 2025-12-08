@@ -77,7 +77,7 @@
           v-if="bufferClips.length === 0"
           class="buffer-placeholder"
         >
-          Click ▶ on any node to collect snapshots here…
+          Click ☆ on any node to collect snapshots here…
         </span>
       </div>
 

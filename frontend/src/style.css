@@ -22,14 +22,14 @@ body {
   /* === unified media colors, match NODE_COLORS 旧值 === */
   --media-aux-border: #E5E7EB;  /* auxBorder */
 
-  --media-image: #8FB7E8;       /* image */
-  --media-video: #8FD1B4;       /* video */
-  --media-audio: #F4A7A8;       /* audio */
+  --media-image: #5F96DB;     /* image */
+  --media-video: #5ABF8E;       /* video */
+  --media-audio: #E06C6E;       /* audio */
 
   /* soft tints for header / background */
-  --media-image-soft: #E6F0FB;
-  --media-video-soft: #E6F7F0;
-  --media-audio-soft: #FDEBEB;
+  --media-image-soft: #8FB7E8;  
+  --media-video-soft: #8FD1B4;
+  --media-audio-soft: #F4A7A8;
 }
 
 /* ===================== workflow 节点卡片 ===================== */
@@ -70,6 +70,35 @@ body {
   border-color: #2563eb;
   box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.3);
 }
+
+/* ========== node-card 多模态色系 ========== */
+.node-card[data-node-category="image"] {
+  border-color: var(--media-image);
+  background: linear-gradient(
+    to bottom,
+    #ffffff,
+    color-mix(in srgb, var(--media-image) 12%, #ffffff)
+  );
+}
+
+.node-card[data-node-category="video"] {
+  border-color: var(--media-video);
+  background: linear-gradient(
+    to bottom,
+    #ffffff,
+    color-mix(in srgb, var(--media-video) 12%, #ffffff)
+  );
+}
+
+.node-card[data-node-category="audio"] {
+  border-color: var(--media-audio);
+  background: linear-gradient(
+    to bottom,
+    #ffffff,
+    color-mix(in srgb, var(--media-audio) 12%, #ffffff)
+  );
+}
+
 
 /* 缩略图（用于节点和拼接区） */
 .thumb {
