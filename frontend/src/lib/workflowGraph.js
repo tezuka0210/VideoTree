@@ -1486,6 +1486,12 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   const promptText = d.parameters ? (d.parameters.positive_prompt || d.parameters.text) : null;
   const hasPrompt = typeof promptText === 'string' && promptText.trim() !== '';
 
+  // 从 CSS 变量里读模态颜色
+  const rootStyle = getComputedStyle(document.documentElement);
+  const mediaVideoColor = rootStyle.getPropertyValue('--media-video').trim() || '#5ABF8E';
+  const mediaImageColor = rootStyle.getPropertyValue('--media-image').trim() || '#5F96DB';
+
+
   const fo = gEl.append('foreignObject')
     .attr('width', d.calculatedWidth)
     .attr('height', d.calculatedHeight)
@@ -2048,52 +2054,47 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     videoUrls.forEach((url, index) => {
       const wrapper = videoContainer.append('xhtml:div')
         .attr('class', 'media-wrapper') // 新增类名，提升样式优先级
+        .style('position', 'relative')
         .style('width', '100%')
         .style('height', '72px')          
         .style('border-radius', '4px')
         .style('overflow', 'hidden')
         .style('pointer-events', 'auto')
-        // 修复1：用 attr 设置内联样式（最高优先级），替代 style()
-        // .attr('style', `
-        //   width: 100%;
-        //   height: 72px;
-        //   border-radius: 4px;
-        //   overflow: hidden;
-        //   pointer-events: auto;
-        //   border: ${index === 0 ? '2px solid #2563eb' : '2px solid transparent'};
-        // `)
-        .on('click', ev => {
+        .style('box-sizing', 'border-box')       // ⭐ 确保边框不改变整体宽度
+        .style('border', '2px solid transparent')// ⭐ 初始就预留 2px 边框空间
+        .on('click', function (ev) {
           ev.stopPropagation();
           ev.preventDefault();
+
           selectedMediaUrl = url;
-          // 修复1：重置所有视频边框（用 attr 覆盖）
-          videoContainer.selectAll('.media-wrapper').attr('style', d => {
-            return `
-              width: 100%;
-              height: 72px;
-              border-radius: 4px;
-              overflow: hidden;
-              pointer-events: auto;
-              border: 2px solid transparent;
-            `;
-          });
-          // 修复1：设置当前选中边框（内联 attr 最高优先级）
-          // d3.select(this).attr('style', `
-          //   width: 100%;
-          //   height: 72px;
-          //   border-radius: 4px;
-          //   overflow: hidden;
-          //   pointer-events: auto;
-          //   border: 2px solid #2563eb !important;
-          // `);
+
+          // 1) 清空所有视频缩略图的选中状态
+          videoContainer.selectAll('.media-wrapper')
+            .each(function () {
+              d3.select(this)
+                .classed('media-selected', false)
+                .style('border-color', 'transparent')
+                .select('.media-select-badge')
+                .style('opacity', '0.25');
+            });
+
+          // 2) 当前这一个加选中样式 + 星星高亮
+          d3.select(this)
+            .classed('media-selected', true)
+            .style('border-color', mediaVideoColor)
+            .select('.media-select-badge')
+            .style('opacity', '1')
+            .style('background', mediaVideoColor)
+            .style('color', '#ffffff');
+
           console.log('选中视频：', url);
-          console.log('selectedMediaUrl：', selectedMediaUrl);
         })
         .on('dblclick', ev => {
           ev.stopPropagation();
           ev.preventDefault();
           emit('open-preview', url, 'video');
         });
+
 
       const v = wrapper.append('xhtml:video')
         .style('width', '100%')
@@ -2110,6 +2111,22 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       el.muted = true;
       el.playsInline = true;
       el.src = url;
+
+      // ⭐ 右上角五角星标记
+      wrapper.append('xhtml:div')
+        .attr('class', 'media-select-badge')
+        .text('★')
+        .style('position', 'absolute')
+        .style('top', '4px')
+        .style('right', '4px')
+        .style('font-size', '11px')
+        .style('line-height', '1')
+        .style('padding', '2px 4px')
+        .style('border-radius', '999px')
+        .style('background', 'rgba(17,24,39,0.55)')
+        .style('color', '#e5e7eb')
+        .style('opacity', '0.25')   // 默认比较淡
+        .style('pointer-events', 'none'); // 避免挡住点击
 
       // if (index === 0) {
       //   selectedMediaUrl = url;
@@ -2129,46 +2146,39 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     imageUrls.forEach((url, index) => {
       const wrapper = imgContainer.append('xhtml:div')
         .attr('class', 'media-wrapper') // 新增类名
+        .style('position', 'relative') 
         .style('width', '100%')
         .style('height', '72px')          
         .style('border-radius', '4px')
         .style('overflow', 'hidden')
         .style('pointer-events', 'auto')
-        // 修复1：内联 attr 设置边框（最高优先级）
-        // .attr('style', `
-        //   width: 100%;
-        //   height: 72px;
-        //   border-radius: 4px;
-        //   overflow: hidden;
-        //   pointer-events: auto;
-        //   border: ${index === 0 ? '2px solid #2563eb' : '2px solid transparent'};
-        // `)
-        .on('click', ev => {
+        .style('box-sizing', 'border-box')            // ⭐
+        .style('border', '2px solid transparent')     // ⭐
+        .on('click', function (ev) {
           ev.stopPropagation();
           ev.preventDefault();
+
           selectedMediaUrl = url;
-          // 修复1：重置所有图片边框
-          imgContainer.selectAll('.media-wrapper').attr('style', d => {
-            return `
-              width: 100%;
-              height: 72px;
-              border-radius: 4px;
-              overflow: hidden;
-              pointer-events: auto;
-              border: 2px solid transparent;
-            `;
-          });
-          // 修复1：设置当前选中边框
-          // d3.select(this).attr('style', `
-          //   width: 100%;
-          //   height: 72px;
-          //   border-radius: 4px;
-          //   overflow: hidden;
-          //   pointer-events: auto;
-          //   border: 2px solid #2563eb !important;
-          // `);
+
+          imgContainer.selectAll('.media-wrapper')
+            .each(function () {
+              d3.select(this)
+                .classed('media-selected', false)
+                .style('border-color', 'transparent')
+                .select('.media-select-badge')
+                .style('opacity', '0.25');
+            });
+
+          // 2) 当前这一个：边框 & 星星都用 image 模态颜色
+          d3.select(this)
+            .classed('media-selected', true)
+            .style('border-color', mediaImageColor)
+            .select('.media-select-badge')
+            .style('opacity', '1')
+            .style('background', mediaImageColor)
+            .style('color', '#ffffff');
+
           console.log('选中图片：', url);
-          console.log('selectedMediaUrl：', selectedMediaUrl);
         })
         .on('dblclick', ev => {
           ev.stopPropagation();
@@ -2185,9 +2195,21 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .style('display', 'block')
         .style('pointer-events', 'none');
 
-      // if (index === 0 && videoUrls.length === 0) {
-      //   selectedMediaUrl = url;
-      // }
+      // ⭐ 右上角五角星
+      wrapper.append('xhtml:div')
+        .attr('class', 'media-select-badge')
+        .text('★')
+        .style('position', 'absolute')
+        .style('top', '4px')
+        .style('right', '4px')
+        .style('font-size', '11px')
+        .style('line-height', '1')
+        .style('padding', '2px 4px')
+        .style('border-radius', '999px')
+        .style('background', 'rgba(17,24,39,0.55)')
+        .style('color', '#e5e7eb')
+        .style('opacity', '0.25')
+        .style('pointer-events', 'none');
     });
   }
 
