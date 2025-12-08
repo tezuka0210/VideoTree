@@ -214,10 +214,10 @@
       </div>
     </div>
 
-    <!-- Stitch button -->
+     <!-- Stitch button - 修改为统一的灰色系和圆角 -->
     <button
       id="stitch-button"
-      class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:bg-gray-400"
+      class="stitch-btn"
       :disabled="clips.length === 0 || isStitching"
       @click="stitch"
     >
@@ -537,6 +537,46 @@ const getBufferMeta = (clip: any): string => {
   border-radius: 6px;
   border: 1px solid var(--media-audio-bg, #F4A7A8);
   background: color-mix(in srgb, var(--media-audio-bg, #F4A7A8) 16%, #ffffff);
+}
+
+/* ===== Stitch 按钮样式 - 统一的灰色系 ===== */
+.stitch-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 4px 0;
+  background: #6b7280; /* 主灰色 */
+  color: white;
+  border: none;
+  border-radius: 7px; /* 统一的圆角 */
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* 按钮 hover 状态 */
+.stitch-btn:not(:disabled):hover {
+  background: #4b5563; /* 深灰色 */
+  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
+}
+
+/* 按钮点击状态 */
+.stitch-btn:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+/* 禁用状态 */
+.stitch-btn:disabled {
+  background: #9ca3af; /* 浅灰色 */
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* 焦点状态 */
+.stitch-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(107, 114, 128, 0.3);
 }
 </style>
 

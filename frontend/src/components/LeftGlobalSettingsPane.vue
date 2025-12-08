@@ -10,7 +10,7 @@
         <div class="form-group">
           <label class="form-label">Model</label>
           <select class="form-select">
-            <option>video-llm-1</option>
+            <option>GPT-4O</option>
             <option>image-llm-1</option>
             <option>custom-v2</option>
           </select>
