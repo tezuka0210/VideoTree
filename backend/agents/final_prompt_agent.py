@@ -18,59 +18,71 @@ def final_prompt_agent_node(state: AgentState):
     # 2. 初始化 LLM（保持原有配置）
     llm = ChatOpenAI(
         model="gpt-4o",
-        temperature=0.5,
+        temperature=0.4,
         model_kwargs={"response_format": {"type": "json_object"}}
     )
 
     # 3. 提示词模板（保持原有逻辑，仅确保变量引用一致）
     system_prompt = """
-    You are an expert Stable Diffusion Prompt Engineer for ComfyUI.
-    Your goal is to generate coherent, complete English sentences as prompts (not isolated phrases) based on the user request and analysis, integrating ComfyUI syntax for weighting and random selection.
+    You are an expert ComfyUI Prompt Engineer.
+    Your goal is to construct a descriptive English sentence that strictly follows specific logic based on input weights.
 
-    Context:
-    - Global Context (The Base): {global_context}
-    - Local Instruction (The Edit): {user_input}   
-    - Visual Style: {style} 
-    - Entity Knowledge: {knowledge} 
+    ### INPUT DATA
+    - User Input: {user_input}
+    - Global Context: {global_context}
+    - Style: {style}
+    - Knowledge: {knowledge}
 
-    Weight Definition & Syntax Rules:
-    1.  **NON-NEGOTIABLE: Preserve all user-provided (keyword:weight) entries VERBATIM—no deletion, replacement, abbreviation, or modification of keywords/weights.** (e.g., if user inputs "(black white spots on dog:1.6)", output must include this exact phrase and weight; do not change to "black dog" or remove "on dog".)
-    2.  Weight > 1: Higher value = more important (must prioritize this detail, no flexibility).
-    3.  Weight = 1: Standard requirement (strictly follow the content, no expansion).
-    4.  Weight < 1: Represents ambiguous intent (allow 2-3 options using {{option1|option2|option3}} syntax; all options ≤5 words).
-        *   **Critical:** For weight < 1, the nature of the options is determined by how close the weight is to 0 or 1:
-            *   A weight **closer to 0** (e.g., 0.1, 0.2) means the options should be **completely different and from distinct categories**.
-            *   A weight **closer to 1** (e.g., 0.8, 0.9) means the options should be **similar and within the same category**.
-    5.  Random Selection: Use {{option1|option2|option3}} *only* for content with weight < 1 (embed directly in the sentence).
-    6.  Sentence Requirement: Prompts must be complete, coherent sentences (not phrases) that describe the full image/transformation logic, with ALL user-provided weighted entries integrated naturally.
+    ### CORE LOGIC: THE "WEIGHT THRESHOLD" RULE (CRITICAL)
+    You must parse every `(keyword:weight)` in the User Input and handle it differently based on the number:
 
-    Instructions:
-    1. Context Fusion Strategy (CRITICAL):
-        - Priority Order: {user_input} > {global_context} > {knowledge}  # User instruction takes precedence; knowledge supplements details
-        - Use {knowledge} to enhance specificity (e.g., texture, lighting) but never replace or delete user-provided keywords.
-        - Example: If user inputs "(blue and white porcelain:1.5)", knowledge can add "glossy glaze" but must retain the original (blue and white porcelain:1.5).
-        - If {knowledge} is empty, ignore this section without affecting core logic.
+    **CASE A: High Weight (>= 1.0)** -> **LOCKED MODE**
+    - Logic: The user is certain.
+    - Action: You MUST keep the string `(keyword:weight)` EXACTLY as is.
+    - Rule: Do not change the word. Do not remove the brackets. Embed it verbatim into the sentence.
+    
+    **CASE B: Low Weight (< 1.0)** -> **DYNAMIC EXPANSION MODE**
+    - Logic: The user is uncertain or wants variation.
+    - Action: You MUST convert this into ComfyUI dynamic syntax `{{opt1|opt2|opt3}}`.
+    - Rule:
+      - If weight is close to 0 (0.1-0.3): Generate 3 DISTINCTLY DIFFERENT options (e.g., different colors/types).
+      - If weight is close to 1 (0.8-0.9): Generate 3 SIMILAR/RELATED options.
+    - **Outcome:** The original `(key:0.x)` is REMOVED and replaced by `{{opt1|opt2|opt3}}`.
 
-    2. Positive Prompt Rules:
-    - Must be a complete English sentence (not isolated phrases)
-    - Emphasize lighting, texture, and composition (supplement, do not replace user keywords)
-    - Integrate ALL user-provided (content:weight) entries (no omissions)
-    - For weight < 1: Embed {{option1|option2|option3}} (2-3 options, each ≤5 words) only if the original entry has weight < 1
-    - Ensure natural flow (weighted chunks fit seamlessly into the sentence)
-
-    3. Negative Prompt Rules:
-    - Must be a complete English sentence (not isolated phrases)
-    - Focus on avoiding image defects/artifacts
-    - Integrate ALL user-provided (negative content:weight) entries (no omissions)
-    - For weight < 1: Embed {{option1|option2|option3}} (2-3 options, each ≤5 words) only if the original entry has weight < 1
-    - Ensure natural flow (weighted chunks fit seamlessly into the sentence)
-
-    4. Output Rules:
-    - Strictly follow sentence structure (no phrase lists), weight definition, and syntax rules
-    - No extra text, only JSON format (no line breaks in prompt strings):
+    ### OUTPUT FORMAT
+    - Return ONLY a raw JSON string. Do not wrap in markdown ```json ... ```.
+    - Structure:
     {{
-    "positive": "Complete positive sentence with ALL user-provided (weighted content:1.5) integrated naturally",
-    "negative": "Complete negative sentence with ALL user-provided (weighted defect:1.3) integrated naturally"
+      "positive": "Full sentence...",
+      "negative": "Full sentence..."
+    }}
+
+    ### FEW-SHOT EXAMPLES (Study the Logic)
+
+    **Example 1 (High Weights)**
+    Input: "(red sports car:1.5), (highway:1.2)"
+    Output:
+    {{
+      "positive": "A sleek (red sports car:1.5) speeds down the wide (highway:1.2) under the bright sun.",
+      "negative": "bad quality, blurry"
+    }}
+
+    **Example 2 (Low Weights - Expansion)**
+    Input: "(weather:0.2), (structure:1.5)"
+    Explanation: 'weather' is 0.2 (Low), so it becomes distinct options. 'structure' is 1.5 (High), so it stays.
+    Output:
+    {{
+      "positive": "Under the {{stormy sky|bright sunny sky|starry night}}, a massive (structure:1.5) stands tall.",
+      "negative": "bad quality"
+    }}
+
+    **Example 3 (Mixed)**
+    Input: "(blue eyes:1.4), (hair color:0.8)"
+    Explanation: 'blue eyes' is High -> Keep. 'hair color' is 0.8 (High-ish but <1) -> Similar options.
+    Output:
+    {{
+      "positive": "The portrait features a woman with piercing (blue eyes:1.4) and flowing {{blonde hair|light brown hair|golden hair}}.",
+      "negative": "bad anatomy"
     }}
     """
     # 4. 创建 Prompt 模板 + 定义 chain（修复：确保模板变量与传递参数一致）

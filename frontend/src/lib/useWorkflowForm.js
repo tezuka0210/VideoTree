@@ -33,6 +33,9 @@ export const workflowParameters = {
     { id: 'audio_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'voice_speed_factor', label: 'Speed', type: 'number', defaultValue: 1.0, step:0.01, min:0.8, max:1.2  }
   ],
+  LayerStacking:[
+    { id: 'position', label: 'position', type: 'select', options: ['left','middle','right'], defaultValue: 'middle'}
+  ],
   ImageCanny: [
     { id: 'low_threshold', label: 'Low Threshold', type: 'number', defaultValue: 0.1, step: 0.01, min: 0, max: 1 },
     { id: 'high_threshold', label: 'High Threshold', type: 'number', defaultValue: 0.8, step: 0.01, min: 0, max: 1 }
@@ -51,8 +54,8 @@ export const workflowParameters = {
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
     { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 },
-    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
-    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1280 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 720 },
     { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
   ],
   ImageGenerateImage_Basic: [
@@ -60,8 +63,8 @@ export const workflowParameters = {
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
     { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 },
-    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
-    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1280 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 720 },
     { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
   ],
   ImageGenerateImage_Canny: [
@@ -69,8 +72,8 @@ export const workflowParameters = {
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
     { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 },
-    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
-    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1280 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 720 },
     { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
   ],
   ImageHDRestoration: [
@@ -90,30 +93,33 @@ export const workflowParameters = {
     { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step: 1 },
-    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
-    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
-    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
-    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1280 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 720 },
+    // { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
+    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 },
+    { id: 'time', label: 'time', type:'number', defaultValue: 5}
   ],
   ImageGenerateVideo: [
     { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
     { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step: 1 },
-    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
-    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
-    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
-    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1280 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 720 },
+    // { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
+    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 },
+    { id: 'time', label: 'time', type:'number', defaultValue: 5}
   ],
   FLFrameToVideo: [
     { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
     { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step: 1 },
-    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
-    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
-    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
-    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1280 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 720 },
+    // { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
+    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 },
+    { id: 'time', label: 'time', type:'number', defaultValue: 5}
   ],
   CameraControl: [
     { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
@@ -121,10 +127,11 @@ export const workflowParameters = {
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'camera_pose', label: 'camera_pose', type: 'select', options: ['Pan Up', 'Pan Down', 'Pan Left', 'Pan Right', 'Zoom In', 'Zoom Out', 'Anti Clockwise (ACW)', 'ClockWise (CW)'], defaultValue: 'Pan Up' },
     { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step: 1 },
-    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
-    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
-    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
-    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1280 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 720 },
+    // { id: 'length', label: 'length', type: 'number', defaultValue: 41, step: 8 },
+    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 },
+    { id: 'time', label: 'time', type:'number', defaultValue: 5}
   ],
   FrameInterpolation: [
     { id: 'multiplier', label: 'multiplier', type: 'number', defaultValue: 2 },

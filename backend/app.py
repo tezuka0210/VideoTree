@@ -611,16 +611,48 @@ def create_node():
         if module_id_from_frontend == 'AddText':
             print(">>> 检测到 AddText 模块，仅保存文本节点到数据库。")
             # "AddText" 模块没有 ComfyUI 操作，它只保存节点
-            database.update_node(
-                node_id=node_id,
-                payload={
-                    "title": node_title,
-                    "module_id": module_id_from_frontend,
-                    "assets": {},
-                    "parameters": parameters,
-                    "status":'completed'
-                }
-            )
+            def is_parameters_empty(params):
+                if not params:  # 处理 None/空字典/空字符串等
+                    return True
+                # 如果是字典，判断是否有有效键值对（排除全为空的值）
+                if isinstance(params, dict):
+                    return all(not v for v in params.values())
+                # 其他类型（如字符串）判断是否为空
+                return not params
+            
+            # 判断参数是否有值
+            parameters_has_value = not is_parameters_empty(parameters)
+            
+            # 分支逻辑：有值更新，无值新增
+            if parameters_has_value:
+                print(f">>> 参数有值，更新节点 {node_id}")
+                # 更新现有节点
+                database.update_node(
+                    node_id=node_id,
+                    payload={
+                        "title": node_title,
+                        "module_id": module_id_from_frontend,
+                        "assets": {},
+                        "parameters": parameters,
+                        "status": 'completed'
+                    }
+                )
+                
+            else:
+                print(f">>> 参数无值，新增 AddText 节点")
+                # 新增节点（保留原有新增逻辑）
+                new_node_id = database.add_node(
+                    node_id=node_id,
+                    tree_id=tree_id,
+                    parent_ids=parent_ids,
+                    module_id=module_id_from_frontend,
+                    parameters=parameters,
+                    title='AddText',
+                    assets={},  # 没有媒体资源
+                    status='completed'
+                )
+                if not new_node_id:
+                    raise Exception("保存 AddText 节点到数据库失败。")
 
             # 返回更新后的树
             updated_tree = database.get_tree_as_json(tree_id)
@@ -629,16 +661,48 @@ def create_node():
         if module_id_from_frontend == 'AddWorkflow':
             print(">>> 检测到 AddWorkflow 模块，仅保存文本节点到数据库。")
             # "AddWorkflow" 模块没有 ComfyUI 操作，它只保存节点
-            database.add_node(
-                node_id=update_id,
-                payload={
-                    "title": node_title,
-                    "module_id": module_id_from_frontend,
-                    "assets": {},
-                    "parameters": parameters,
-                    "status":'completed'
-                }
-            )
+            def is_parameters_empty(params):
+                if not params:  # 处理 None/空字典/空字符串等
+                    return True
+                # 如果是字典，判断是否有有效键值对（排除全为空的值）
+                if isinstance(params, dict):
+                    return all(not v for v in params.values())
+                # 其他类型（如字符串）判断是否为空
+                return not params
+            
+            # 判断参数是否有值
+            parameters_has_value = not is_parameters_empty(parameters)
+            
+            # 分支逻辑：有值更新，无值新增
+            if parameters_has_value:
+                print(f">>> 参数有值，更新节点 {node_id}")
+                # 更新现有节点
+                database.update_node(
+                    node_id=node_id,
+                    payload={
+                        "title": node_title,
+                        "module_id": module_id_from_frontend,
+                        "assets": {},
+                        "parameters": parameters,
+                        "status": 'completed'
+                    }
+                )
+                
+            else:
+                print(f">>> 参数无值，新增 AddWorkflow 节点")
+                # 新增节点（保留原有新增逻辑）
+                new_node_id = database.add_node(
+                    node_id=node_id,
+                    tree_id=tree_id,
+                    parent_ids=parent_ids,
+                    module_id=module_id_from_frontend,
+                    parameters=parameters,
+                    title='AddWorkflow',
+                    assets={},  # 没有媒体资源
+                    status='completed'
+                )
+                if not new_node_id:
+                    raise Exception("保存 AddWorkflow 节点到数据库失败。")
             
 
         try:
@@ -794,7 +858,7 @@ def create_node():
             if parameters_has_value:
                 print(f">>> 参数有值，更新节点 {node_id}")
                 # 更新现有节点
-                update_success = database.update_node(
+                database.update_node(
                     node_id=node_id,
                     payload={
                         "title": node_title,
@@ -804,8 +868,7 @@ def create_node():
                         "status": 'completed'
                     }
                 )
-                if not update_success:
-                    raise Exception(f"更新 AddText 节点 {node_id} 到数据库失败。")
+                
             else:
                 print(f">>> 参数无值，新增 AddText 节点")
                 # 新增节点（保留原有新增逻辑）
@@ -846,7 +909,7 @@ def create_node():
             if parameters_has_value:
                 print(f">>> 参数有值，更新节点 {node_id}")
                 # 更新现有节点
-                update_success = database.update_node(
+                database.update_node(
                     node_id=node_id,
                     payload={
                         "title": node_title,
@@ -856,8 +919,7 @@ def create_node():
                         "status": 'completed'
                     }
                 )
-                if not update_success:
-                    raise Exception(f"更新 AddWorkflow 节点 {node_id} 到数据库失败。")
+                
             else:
                 print(f">>> 参数无值，新增 AddWorkflow 节点")
                 # 新增节点（保留原有新增逻辑）
@@ -909,6 +971,14 @@ def create_node():
                 image2_filename = get_input_image_filenames_from_db(node_id)[1]
                 image_filenames["LoadStartImage"] = image1_filename
                 image_filenames["LoadLastImage"] = image2_filename 
+            if(module_id_from_frontend == 'LayerStacking'):
+                final_module_id = module_id_from_frontend 
+                workflow = load_workflow(final_module_id)
+                if workflow is None: raise ValueError(f"未找到 LayerStacking 工作流 '{final_module_id}.json'")
+                image1_filename = get_input_image_filenames_from_db(node_id)[0]
+                image2_filename = get_input_image_filenames_from_db(node_id)[1]
+                image_filenames["LoadBackgroundImage"] = image1_filename
+                image_filenames["LoadMoveImage"] = image2_filename 
             else:
                 print(">>> 检测到两个输入,执行ImageMerging工作流...")
                 image1_filename = get_input_image_filenames_from_db(node_id)[0]
@@ -1034,8 +1104,8 @@ def create_node():
                 workflow[size_node_id]["inputs"]["height"] = parameters['height']
             if 'batch_size' in parameters and not isVideo:
                 workflow[size_node_id]["inputs"]["batch_size"] = parameters['batch_size']
-            if 'length' in parameters:
-                workflow[size_node_id]["inputs"]["length"] = parameters['length']
+            if 'time' in parameters:
+                workflow[size_node_id]["inputs"]["length"] = parameters['time'] * 8 + 1
             if 'speed' in parameters:
                 workflow[size_node_id]["inputs"]["speed"] = parameters['speed']
             if 'camera_pose' in parameters:
@@ -1093,13 +1163,41 @@ def create_node():
         rembg_node_id = find_node_id_by_title(workflow,"Image Rembg (Remove Background)")
         if rembg_node_id:
             if 'model' in parameters:
-                workflow[stitch_node_id]["inputs"]["model"] = parameters['model']
+                workflow[rembg_node_id]["inputs"]["model"] = parameters['model']
             if 'foreground_threshold' in parameters:
-                workflow[stitch_node_id]["inputs"]["alpha_matting_foreground_threshold"] = parameters['foreground_threshold']
+                workflow[rembg_node_id]["inputs"]["alpha_matting_foreground_threshold"] = parameters['foreground_threshold']
             if 'background_threshold' in parameters:
-                workflow[stitch_node_id]["inputs"]["alpha_matting_background_threshold"] = parameters['background_threshold']
+                workflow[rembg_node_id]["inputs"]["alpha_matting_background_threshold"] = parameters['background_threshold']
             if 'erode_size' in parameters:
-                workflow[stitch_node_id]["inputs"]["alpha_matting_erode_size"] = parameters['erode_size']
+                workflow[rembg_node_id]["inputs"]["alpha_matting_erode_size"] = parameters['erode_size']
+        
+        # Layer Stack
+        LayerStack_node_id = find_node_id_by_title(workflow,"LayerUtility: ImageBlendAdvance")
+        if LayerStack_node_id:
+            if 'position' in parameters:
+                pos_map = {
+                    "left": 0,
+                    "middle": 50,
+                    "right": 100
+                }
+                workflow[LayerStack_node_id]["inputs"]["x_percent"] = pos_map.get(parameters['position'], 50)
+
+        LayerScale_node_id = find_node_id_by_title(workflow,"LayerUtility: ImageScaleByAspectRatio")
+        if LayerScale_node_id and 'scale' in parameters:
+            if image_filenames.get("LoadMoveImage"):
+                img_filename = image_filenames["LoadMoveImage"]  # 这里是图片文件名（如test.jpg）
+                img_path = os.path.join(COMFYUI_INPUT_PATH, img_filename)  # 拼接完整路径
+                if not os.path.exists(img_path):
+                    raise FileNotFoundError(f"图片文件不存在：{img_path}")
+
+                with Image.open(img_path) as img:
+                    original_height = img.height
+
+                scale_value = parameters['scale']
+                scaled_height = original_height * scale_value
+                workflow[LayerStack_node_id]["inputs"]["scale_to_length"] = scaled_height
+
+
         # VOICE
         voice_node_id = find_node_id_by_title(workflow,"VibeVoice Single Speaker")
         if voice_node_id:

@@ -1,0 +1,89 @@
+{
+  "5": {
+    "inputs": {
+      "image": "中和琴底诗.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadBackgroundImage"
+    }
+  },
+  "6": {
+    "inputs": {
+      "image": "flux_krea_00017_.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadMoveImage"
+    }
+  },
+  "11": {
+    "inputs": {
+      "invert_mask": false,
+      "blend_mode": "normal",
+      "opacity": 100,
+      "x_percent": 50,
+      "y_percent": 50,
+      "mirror": "None",
+      "scale": 1,
+      "aspect_ratio": 1,
+      "rotate": 0,
+      "transform_method": "lanczos",
+      "anti_aliasing": 0,
+      "background_image": [
+        "6",
+        0
+      ],
+      "layer_image": [
+        "17",
+        0
+      ],
+      "layer_mask": [
+        "17",
+        1
+      ]
+    },
+    "class_type": "LayerUtility: ImageBlendAdvance",
+    "_meta": {
+      "title": "LayerUtility: ImageBlendAdvance"
+    }
+  },
+  "16": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "17": {
+    "inputs": {
+      "aspect_ratio": "original",
+      "proportional_width": 1,
+      "proportional_height": 1,
+      "fit": "letterbox",
+      "method": "lanczos",
+      "round_to_multiple": "8",
+      "scale_to_side": "height",
+      "scale_to_length": 512,
+      "background_color": "#000000",
+      "image": [
+        "5",
+        0
+      ],
+      "mask": [
+        "5",
+        1
+      ]
+    },
+    "class_type": "LayerUtility: ImageScaleByAspectRatio V2",
+    "_meta": {
+      "title": "LayerUtility: ImageScaleByAspectRatio"
+    }
+  }
+}

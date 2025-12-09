@@ -5,9 +5,14 @@ from .state import AgentState
 
 # 1. 【关键修改】完善元数据，明确区分 音频 vs 图像
 WORKFLOW_METADATA = {
-    "ImageGenerateImage_Basic.json": "General purpose image-to-image generation.",
-    "ImageGenerateImage_Canny.json": "SPECIALIZED workflow. Use ONLY when parent is 'ImageCanny.json'.",
-    "ImageCanny.json": "Extracts edge maps.",
+     # 核心：融合/修改类图生图（无特殊依赖）
+    "ImageGenerateImage_Basic.json": "General image-to-image generation. Use ONLY for fusion, modification of images (no line art focus).",
+    # 核心：线稿专属类图生图（强依赖Canny）
+    "ImageGenerateImage_Canny.json": "Specialized image-to-image generation. Use ONLY when parent is 'ImageCanny.json' (line art focus, no fusion/modification).",
+    # 辅助：提取线稿
+    "ImageCanny.json": "Extracts edge maps (for line art generation).",
+    # 核心：纯叠放（无融合/无线稿）
+    "LayerStacking.json": "Layers one object onto another image. Use ONLY for stacking (no fusion, no line art focus).",
     
     # 假设你的音频工作流叫 TextToAudio.json
     "TextToAudio.json": "Generates AUDIO, SPEECH, or NARRATION. **High Priority** if user mentions 'narration', 'voice', 'say', 'speak'.",
