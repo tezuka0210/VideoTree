@@ -184,43 +184,6 @@ function findDescendants(nodeId, hierarchy) {
   return descendants
 }
 
-// /** 基于 _collapsed 计算可见节点与连线 */
-// export function getVisibleNodesAndLinks(allNodes) {
-//   if (!allNodes || allNodes.length === 0) {
-//     return { visibleNodes: [], visibleLinks: [] }
-//   }
-
-//   const nodeMap = new Map(allNodes.map(n => [n.id, { ...n, children: [] }]))
-//   allNodes.forEach(n => {
-//     if (n.originalParents) {
-//       n.originalParents.forEach(parentId => {
-//         const p = nodeMap.get(parentId)
-//         if (p) p.children.push(n)
-//       })
-//     }
-//   })
-
-//   const hidden = new Set()
-//   allNodes.forEach(node => {
-//     if (node._collapsed) {
-//       findDescendants(node.id, nodeMap).forEach(id => hidden.add(id))
-//     }
-//   })
-
-//   const visibleNodes = allNodes.filter(n => !hidden.has(n.id))
-//   const visibleIds = new Set(visibleNodes.map(n => n.id))
-
-//   const visibleLinks = []
-//   visibleNodes.forEach(n => {
-//     if (n.originalParents) {
-//       n.originalParents.forEach(p => {
-//         if (visibleIds.has(p)) visibleLinks.push({ source: p, target: n.id })
-//       })
-//     }
-//   })
-
-//   return { visibleNodes, visibleLinks }
-// }
 /** 基于 _collapsed 计算可见节点与连线 */
 
 export function getVisibleNodesAndLinks(allNodes) {
@@ -259,6 +222,7 @@ export function getVisibleNodesAndLinks(allNodes) {
 
   return { visibleNodes, visibleLinks }
 }
+
 
 
 /** 粗略推断当前“卡片类型” */
@@ -391,13 +355,36 @@ export function updateVisibility(svgElement, allNodes) {
   })
 
   visibleLinks.forEach(l => g.setEdge(l.source, l.target))
+
   dagre.layout(g)
 
-  const dagreNodes = new Map(g.nodes().map(id => [id, g.node(id)]))
+  const dagreNodes = new Map(g.nodes().map(id => [id, g.node(id)]));
+
   const dagreEdges = g.edges().map(e => {
-    const edgeData = g.edge(e)
-    return { v: e.v, w: e.w, points: edgeData.points }
-  })
+    const edgeData = g.edge(e);
+    const src = dagreNodes.get(e.v);
+    const tgt = dagreNodes.get(e.w);
+
+    if (!edgeData || !edgeData.points || edgeData.points.length === 0 || !src || !tgt) {
+      return { v: e.v, w: e.w, points: [] };
+    }
+
+    // 拷贝一份点数组，避免直接改 dagre 内部对象
+    const pts = edgeData.points.map(p => ({ x: p.x, y: p.y }));
+    const first = pts[0];
+    const last  = pts[pts.length - 1];
+
+    // 起点：source 卡片右侧中点
+    first.x = src.x + (src.width || 0) / 2;
+    // first.y 保持原样（dagre 已算好转折）
+
+    // 终点：target 卡片左侧中点
+    last.x = tgt.x - (tgt.width || 0) / 2;
+    // last.y 同样不动
+
+    return { v: e.v, w: e.w, points: pts };
+  });
+
 
   // 3) 选中当前 layout 容器里的 nodes / links，做平滑过渡
   const layoutGroup = svg.select('g.zoom-container')
@@ -443,10 +430,10 @@ export function renderTree(
   // ====== 合并布局参数：外部传入的 horizontalGap / verticalGap 优先 ======
   if (layoutOptions) {
     if (typeof layoutOptions.horizontalGap === 'number') {
-      layoutConfig.nodesep = layoutOptions.horizontalGap
+      layoutConfig.ranksep = layoutOptions.horizontalGap
     }
     if (typeof layoutOptions.verticalGap === 'number') {
-      layoutConfig.ranksep = layoutOptions.verticalGap
+      layoutConfig.nodesep = layoutOptions.verticalGap
     }
   }
 
@@ -538,13 +525,36 @@ export function renderTree(
   })
 
   visibleLinks.forEach(l => g.setEdge(l.source, l.target))
+
   dagre.layout(g)
 
-  const dagreNodes = new Map(g.nodes().map(id => [id, g.node(id)]))
+  const dagreNodes = new Map(g.nodes().map(id => [id, g.node(id)]));
+
   const dagreEdges = g.edges().map(e => {
-    const edgeData = g.edge(e)
-    return { v: e.v, w: e.w, points: edgeData.points }
-  })
+    const edgeData = g.edge(e);
+    const src = dagreNodes.get(e.v);
+    const tgt = dagreNodes.get(e.w);
+
+    if (!edgeData || !edgeData.points || edgeData.points.length === 0 || !src || !tgt) {
+      return { v: e.v, w: e.w, points: [] };
+    }
+
+    // 拷贝一份点数组，避免直接改 dagre 内部对象
+    const pts = edgeData.points.map(p => ({ x: p.x, y: p.y }));
+    const first = pts[0];
+    const last  = pts[pts.length - 1];
+
+    // 起点：source 卡片右侧中点
+    first.x = src.x + (src.width || 0) / 2;
+    // first.y 保持原样（dagre 已算好转折）
+
+    // 终点：target 卡片左侧中点
+    last.x = tgt.x - (tgt.width || 0) / 2;
+    // last.y 同样不动
+
+    return { v: e.v, w: e.w, points: pts };
+  });
+
 
   // SVG 容器与缩放
   const width = svgElement.clientWidth || 1200
@@ -553,7 +563,6 @@ export function renderTree(
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('preserveAspectRatio', 'xMidYMid meet')
 
-  
 
   const defs = svg.append('defs')
   // 只保留一种灰色箭头
