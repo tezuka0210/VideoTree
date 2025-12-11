@@ -5,7 +5,7 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "LoadBackgroundImage"
+      "title": "LoadMoveImage"
     }
   },
   "6": {
@@ -14,7 +14,7 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "LoadMoveImage"
+      "title": "LoadBackgroundImage"
     }
   },
   "11": {
@@ -70,7 +70,7 @@
       "method": "lanczos",
       "round_to_multiple": "8",
       "scale_to_side": "height",
-      "scale_to_length": 512,
+      "scale_to_length": 650,
       "background_color": "#000000",
       "image": [
         "5",

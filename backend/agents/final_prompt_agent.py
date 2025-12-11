@@ -1,153 +1,145 @@
 import json
+import re
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from .state import AgentState
 
 def final_prompt_agent_node(state: AgentState):
-    print("--- Running Prompt Agent (Updated for Sentence Prompts) ---")
+    print("--- Running Prompt Agent (Semantic Hint Mode - Fixed) ---")
 
-    # 1. 从状态中获取上下文（修复：变量名与模板引用一致，补充缺失变量）
-    user_input = state.get("user_positive_input", "")  # 原逻辑：用户输入从 user_positive_input 获取
+    # 1. 获取输入
+    user_input = state.get("user_input", "") 
     intent = state.get("intent", "")
-    style = state.get("style", "")  # 模板需要，补充获取（默认空字符串）
-    #image_caption = state.get("image_caption", "")
+    style = state.get("style", "")
     knowledge = state.get("knowledge_context", "")
-    selected_workflow = state.get("selected_workflow", "")
-    global_context = state.get("global_context", "")  # 模板需要，补充获取（默认空字符串）
+    global_context = state.get("global_context", "")
 
-    # 2. 初始化 LLM（保持原有配置）
+    # =========================================================================
+    # 步骤 A: 带语义提示的占位符 (Semantic Hint Masking)
+    # =========================================================================
+    protected_tokens = {}
+    llm_view_input_list = []
+    counter = 0
+    pattern = r"\(([^)]+):(\d+(?:\.\d+)?)\)"
+    
+    # 查找所有匹配项
+    all_tokens = list(re.finditer(pattern, user_input))
+    
+    for match in all_tokens:
+        full_string = match.group(0) # (museum:1.5)
+        keyword = match.group(1)     # museum
+        weight = float(match.group(2))
+        
+        if weight >= 1.0:
+            # === 高权重：制作替身 ===
+            placeholder_id = f"__LOCKED_{counter}__"
+            
+            # 这里生成的字符串用于替换 {masked_input} 变量，
+            # 传给 LangChain 后，它会变成最终 Prompt 的一部分。
+            # 为了让 LLM 看到 "{ __LOCKED_0__ }"，Python f-string 需要写成 "{{ ... }}"
+            # 但这里我们是在 Python 代码里生成字符串，不是在 PromptTemplate 里，
+            # 所以生成 "keyword { __LOCKED_0__ }" 即可。
+            hint_string = f"{keyword} {{ {placeholder_id} }}" 
+            
+            protected_tokens[placeholder_id] = full_string
+            llm_view_input_list.append(hint_string)
+            counter += 1
+        else:
+            # === 低权重 ===
+            llm_view_input_list.append(full_string)
+
+    masked_input_for_llm = ", ".join(llm_view_input_list)
+    
+    print(f"DEBUG: Input to LLM -> {masked_input_for_llm}")
+    # =========================================================================
+
+    # 2. 初始化 LLM
     llm = ChatOpenAI(
         model="gpt-4o",
-        temperature=0.4,
+        temperature=0.3, 
         model_kwargs={"response_format": {"type": "json_object"}}
     )
 
-    # 3. 提示词模板（保持原有逻辑，仅确保变量引用一致）
+    # 3. System Prompt (关键修复：所有示例中的 { } 都改成了 {{ }})
     system_prompt = """
-    You are an expert ComfyUI Prompt Engineer.
-    Your goal is to construct a descriptive English sentence that strictly follows specific logic based on input weights.
-
-    ### INPUT DATA
-    - User Input: {user_input}
-    - Global Context: {global_context}
-    - Style: {style}
-    - Knowledge: {knowledge}
-
-    ### CORE LOGIC: THE "WEIGHT THRESHOLD" RULE (CRITICAL)
-    You must parse every `(keyword:weight)` in the User Input and handle it differently based on the number:
-
-    **CASE A: High Weight (>= 1.0)** -> **LOCKED MODE**
-    - Logic: The user is certain.
-    - Action: You MUST keep the string `(keyword:weight)` EXACTLY as is.
-    - Rule: Do not change the word. Do not remove the brackets. Embed it verbatim into the sentence.
+    You are an Art Director describing a visual scene.
     
-    **CASE B: Low Weight (< 1.0)** -> **DYNAMIC EXPANSION MODE**
-    - Logic: The user is uncertain or wants variation.
-    - Action: You MUST convert this into ComfyUI dynamic syntax `{{opt1|opt2|opt3}}`.
-    - Rule:
-      - If weight is close to 0 (0.1-0.3): Generate 3 DISTINCTLY DIFFERENT options (e.g., different colors/types).
-      - If weight is close to 1 (0.8-0.9): Generate 3 SIMILAR/RELATED options.
-    - **Outcome:** The original `(key:0.x)` is REMOVED and replaced by `{{opt1|opt2|opt3}}`.
+    ### INPUT DATA
+    - Visual Elements: {masked_input}
+    - Context: {global_context}
+    - Style: {style}
 
-    ### OUTPUT FORMAT
-    - Return ONLY a raw JSON string. Do not wrap in markdown ```json ... ```.
-    - Structure:
+    ### CRITICAL FORMATTING RULES
+    The input format is: `visual description {{ __LOCKED_x__ }}`.
+    
+    1. **Structure:** You MUST write a visual description sentence starting with phrases like "The image features...", "The scene displays...", or "A view of...".
+    2. **Handling Tokens:**
+       - You will see items like `museum scenes {{ __LOCKED_0__ }}`.
+       - You MUST include the ID part `{{ __LOCKED_x__ }}` in your output sentence, placed immediately after the description.
+       - **Example:** "A grand museum scenes {{ __LOCKED_0__ }} with bright lighting {{ __LOCKED_1__ }}."
+    3. **FORBIDDEN:**
+       - DO NOT write narratives like "discussing", "talking", "thinking".
+       - DO NOT treat elements as people unless the keyword says "person".
+       - These are visual tags, not characters in a story.
+    4. **Low Weights:** If you see `(key:0.x)`, convert to `{{{{opt1|opt2}}}}`. 
+       (Note: double braces used above to escape for LangChain, LLM sees single braces)
+
+    ### OUTPUT JSON
     {{
-      "positive": "Full sentence...",
-      "negative": "Full sentence..."
-    }}
-
-    ### FEW-SHOT EXAMPLES (Study the Logic)
-
-    **Example 1 (High Weights)**
-    Input: "(red sports car:1.5), (highway:1.2)"
-    Output:
-    {{
-      "positive": "A sleek (red sports car:1.5) speeds down the wide (highway:1.2) under the bright sun.",
-      "negative": "bad quality, blurry"
-    }}
-
-    **Example 2 (Low Weights - Expansion)**
-    Input: "(weather:0.2), (structure:1.5)"
-    Explanation: 'weather' is 0.2 (Low), so it becomes distinct options. 'structure' is 1.5 (High), so it stays.
-    Output:
-    {{
-      "positive": "Under the {{stormy sky|bright sunny sky|starry night}}, a massive (structure:1.5) stands tall.",
-      "negative": "bad quality"
-    }}
-
-    **Example 3 (Mixed)**
-    Input: "(blue eyes:1.4), (hair color:0.8)"
-    Explanation: 'blue eyes' is High -> Keep. 'hair color' is 0.8 (High-ish but <1) -> Similar options.
-    Output:
-    {{
-      "positive": "The portrait features a woman with piercing (blue eyes:1.4) and flowing {{blonde hair|light brown hair|golden hair}}.",
-      "negative": "bad anatomy"
+        "positive": "The image features [Element {{ __LOCKED_x__ }}]...",
+        "negative": "low quality..."
     }}
     """
-    # 4. 创建 Prompt 模板 + 定义 chain（修复：确保模板变量与传递参数一致）
+
+    # 4. 创建模板
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
-        # 修复：模板中的 {input} 改为 {user_input}（与传递的变量名一致，避免额外未定义变量）
-        ("user", "User Request: {user_input} | Intent: {intent}")
+        ("user", "Describe the scene.")
     ])
+
     chain = prompt | llm
 
-    # 5. 执行 LLM 调用（核心修复：补充缺失的 3 个变量，确保与模板引用完全一致）
+    # 5. 执行
     result = chain.invoke({
-        #"image_caption": image_caption,
-        "user_input": user_input,  # 对应模板中的 {user_input}（包括 system 和 user 消息）
-        "intent": intent,
-        "knowledge": knowledge,
-        "style": style,  # 补充：模板中引用了 {style}
-        "global_context": global_context,  # 补充：模板中引用了 {global_context}
+        # 这里传入的内容本身包含 { } 是没问题的，因为它是作为变量值填进去的
+        "masked_input": masked_input_for_llm, 
+        "global_context": global_context,
+        "style": style
     })
 
-    # 6. 解析结果（保持原有异常处理逻辑）
+    # 6. 解析与还原
     try:
         final_prompts = json.loads(result.content)
-        # 验证输出格式是否符合要求（增强鲁棒性）
-        if not isinstance(final_prompts.get("positive"), str) or not isinstance(final_prompts.get("negative"), str):
-            raise ValueError("Prompt values must be strings")
-    except (json.JSONDecodeError, ValueError):
-        # 回退到默认值
+        positive_text = final_prompts.get("positive", "")
+        negative_text = final_prompts.get("negative", "")
+
+        # =====================================================================
+        # 步骤 B: 智能还原
+        # =====================================================================
+        restored_positive = positive_text
+        
+        for placeholder_id, original_weighted_string in protected_tokens.items():
+            # 正则匹配 { __LOCKED_x__ } (允许空格)
+            id_pattern = r"\{\s*" + re.escape(placeholder_id) + r"\s*\}"
+            
+            if re.search(id_pattern, restored_positive):
+                restored_positive = re.sub(id_pattern, original_weighted_string, restored_positive)
+            elif placeholder_id in restored_positive:
+                restored_positive = restored_positive.replace(placeholder_id, original_weighted_string)
+            else:
+                # 强制找回
+                restored_positive += f", {original_weighted_string}"
+
+        final_prompts["positive"] = restored_positive
+        final_prompts["negative"] = negative_text
+        # =====================================================================
+
+    except Exception as e:
+        print(f"Error: {e}")
         final_prompts = {
             "positive": user_input,
-            "negative": "bad quality, low res"
+            "negative": "bad quality"
         }
 
-    print("AGENCY: Prompt Agent Generated Sentence-Based Prompts.")
+    print(f"AGENCY: Final Prompt Output: {final_prompts['positive']}")
     return {"final_prompt": final_prompts}
-
-# ==========================
-# 测试代码（修复变量名和缺失参数）
-# ==========================
-if __name__ == "__main__":
-    # 1. 准备测试用的 AgentState（补充缺失的默认变量，避免获取为空时模板报错）
-    test_state = AgentState({
-        "user_positive_input": "(sandy beach:1.5), (running puppy:1.6), (bright sun:0.2), (soft fur:1.3), (joyful motion:1.7)",
-        "image_caption": "",
-        "intent": "generate a vivid beach scene with a playful puppy",
-        "style": "",  # 补充：测试时默认空（可根据需要设置具体风格，如 "photorealistic"）
-        "global_context": "",  # 补充：测试时默认空（可根据需要设置全局上下文）
-        "knowledge_context": ""  # 补充：对应代码中的 knowledge 来源
-    })
-
-    # 2. 运行 Agent（修复：函数名拼写错误，原 prompt_agent_node → 正确 final_prompt_agent_node）
-    result = final_prompt_agent_node(test_state)
-
-    # 3. 打印结果
-    print("\n" + "="*50)
-    print("Test Result:")
-    print("="*50)
-    print(f"Final Prompt:\n{json.dumps(result['final_prompt'], indent=2, ensure_ascii=False)}")
-
-    # 4. 验证结果格式
-    positive = result["final_prompt"]["positive"]
-    negative = result["final_prompt"]["negative"]
-    print("\n" + "-"*30)
-    print("Validation:")
-    print(f"- Positive Prompt is a sentence: {len(positive.strip().split('.')) >= 1 and positive.strip().endswith('.')}")
-    print(f"- Positive contains weights: {'(' in positive and ':' in positive and ')' in positive}")
-    print(f"- Positive contains random options: '{{' in positive and '}}' in positive")
-    print(f"- Negative Prompt is a sentence: {len(negative.strip().split('.')) >= 1 and negative.strip().endswith('.')}")

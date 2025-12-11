@@ -37,7 +37,7 @@ app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # --- 模式开关 ----
-APP_MODE = os.getenv('APP_MODE', 'local') 
+APP_MODE = os.getenv('APP_MODE', 'server') 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
 
@@ -1089,11 +1089,11 @@ def create_node():
             positive_prompt = parameters.get('optimized_positive_prompt', parameters.get('positive_prompt', ''))
             workflow[prompt_positive_node_id]["inputs"]["text"] = positive_prompt
 
-        prompt_negative_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Negative Prompt)")
-        if prompt_negative_node_id:
-            # 同理：用 optimized_negative_prompt 执行生成
-            negative_prompt = parameters.get('optimized_negative_prompt', parameters.get('negative_prompt', ''))
-            workflow[prompt_negative_node_id]["inputs"]["text"] = negative_prompt
+        # prompt_negative_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Negative Prompt)")
+        # if prompt_negative_node_id:
+        #     # 同理：用 optimized_negative_prompt 执行生成
+        #     negative_prompt = parameters.get('optimized_negative_prompt', parameters.get('negative_prompt', ''))
+        #     workflow[prompt_negative_node_id]["inputs"]["text"] = negative_prompt
 
         # WIDTH HEIGHT LENGTH BATCH_SIZE SPEED CAMERA
         size_node_id = find_node_id_by_title(workflow, "Size_Setting")
@@ -1175,12 +1175,7 @@ def create_node():
         LayerStack_node_id = find_node_id_by_title(workflow,"LayerUtility: ImageBlendAdvance")
         if LayerStack_node_id:
             if 'position' in parameters:
-                pos_map = {
-                    "left": 0,
-                    "middle": 50,
-                    "right": 100
-                }
-                workflow[LayerStack_node_id]["inputs"]["x_percent"] = pos_map.get(parameters['position'], 50)
+                workflow[LayerStack_node_id]["inputs"]["x_percent"] = parameters['position']*100
 
         LayerScale_node_id = find_node_id_by_title(workflow,"LayerUtility: ImageScaleByAspectRatio")
         if LayerScale_node_id and 'scale' in parameters:

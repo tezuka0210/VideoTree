@@ -34,7 +34,7 @@ export const workflowParameters = {
     { id: 'voice_speed_factor', label: 'Speed', type: 'number', defaultValue: 1.0, step:0.01, min:0.8, max:1.2  }
   ],
   LayerStacking:[
-    { id: 'position', label: 'position', type: 'select', options: ['left','middle','right'], defaultValue: 'middle'}
+    { id: 'position', label: 'position', type: 'number', defaultValue: 0.5, step: 0.01, min: 0, max: 1 }
   ],
   ImageCanny: [
     { id: 'low_threshold', label: 'Low Threshold', type: 'number', defaultValue: 0.1, step: 0.01, min: 0, max: 1 },

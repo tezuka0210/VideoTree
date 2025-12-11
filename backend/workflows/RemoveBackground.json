@@ -11,7 +11,7 @@
   "247": {
     "inputs": {
       "transparency": false,
-      "model": "u2net",
+      "model": "isnet-general-use",
       "post_processing": false,
       "only_mask": false,
       "alpha_matting": false,

@@ -1,19 +1,23 @@
 {
   "2": {
     "inputs": {
-      "text": "Eye-level, 50 mm lens: the exact two individuals from the input image—unaltered faces, hairstyles, body proportions, clothing colors and textures—sit face-to-face across a small round café table; soft natural window light from the left replicates the original lighting direction; table surface is light-oak with a faint reflection of their coffee cups; background shows a gently blurred interior—exposed brick wall, pendant Edison bulbs, quiet patrons in bokeh; steam rises from fresh lattes, a half-eaten croissant on a slate plate between them.",
+      "text": "This is the Zhonghe Guqin, crafted by Zhu Changfang, the second Prince of Lu in the Ming Dynasty.",
       "model": "VibeVoice-1.5B",
       "attention_type": "auto",
       "quantize_llm": "full precision",
       "free_memory_after_generate": true,
       "diffusion_steps": 20,
-      "seed": 2765828473,
+      "seed": 3396539148,
       "cfg_scale": 1.3,
       "use_sampling": false,
       "temperature": 0.95,
       "top_p": 0.95,
       "max_words_per_chunk": 250,
-      "voice_speed_factor": 1
+      "voice_speed_factor": 1,
+      "voice_to_clone": [
+        "5",
+        0
+      ]
     },
     "class_type": "VibeVoiceSingleSpeakerNode",
     "_meta": {
@@ -33,6 +37,16 @@
     "class_type": "SaveAudioMP3",
     "_meta": {
       "title": "Save Audio (MP3)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "audio": "ComfyUI_00017_.mp3",
+      "audioUI": ""
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "加载音频"
     }
   }
 }

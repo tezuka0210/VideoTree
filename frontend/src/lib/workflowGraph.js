@@ -1617,8 +1617,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   const params = d.parameters || {};
   const isVideoNode = /Video/i.test(d.module_id);
   const orderedParamKeys = isVideoNode
-    ? ['batch_size', 'fps', 'length', 'height', 'width']
-    : ['batch_size', 'guidance', 'steps', 'height', 'width'];
+    ? ['batch_size', 'fps', 'time', 'height', 'width']
+    : ['batch_size', 'guidance', 'steps', 'height', 'width','high_threshold','low_threshold','position'];
 
   const paramPairs = orderedParamKeys
     .filter(k => params[k] !== undefined)
@@ -2167,8 +2167,16 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
     paramPairs.forEach(([key, val]) => {
       const isNum = typeof val === 'number';
-      const labelName =
-        key === 'batch_size' ? 'batch' : key.replace(/_/g, ' ');
+      
+      // 1. 新增：参数名简写映射表（核心修改）
+      const paramAliasMap = {
+        'low_threshold': 'L-Thresh',    // 简写：低阈值
+        'high_threshold': 'H-Thresh',  // 简写：高阈值
+        'batch_size': 'batch'             // 保留你原有的 batch_size 简写
+      };
+      
+      // 2. 优先用映射表的简写，没有则按原逻辑处理（下划线转空格）
+      const labelName = paramAliasMap[key] || key.replace(/_/g, ' ');
 
       const field = grid.append('xhtml:div')
         .attr('class', 'input-param-field');
@@ -2179,9 +2187,16 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
       const input = field.append('xhtml:input')
         .attr('class', 'input-param-input node-input')
-        .attr('data-key', key)
+        .attr('data-key', key)  // 核心：保留原始key，不影响参数提交逻辑
         .attr('type', isNum ? 'number' : 'text')
         .attr('value', val);
+
+      // 可选优化：给 threshold 这类小数参数加步长（体验更好）
+      if (isNum && (key === 'low_threshold' || key === 'high_threshold'|| key === 'position')) {
+        input.attr('step', '0.01')  // 步长0.1，适配0.1/0.8这类值
+            .attr('min', '0.0')
+            .attr('max', '1.0'); // 阈值通常0-1之间，可按需调整
+      }
 
       input.on('mousedown', ev => ev.stopPropagation());
     });
@@ -2656,6 +2671,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
           }
 
           const paramDefinitions = workflowParameters[workflowId] || []
+          console.log(`paramDefinitions`,paramDefinitions)
           const defaultParams = paramDefinitions.reduce((obj, param) => {
             obj[param.id] = param.defaultValue
             return obj
@@ -2669,7 +2685,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
           }
 
           d.parameters = updatedParams
-          //console.log(`add workflow agent`,d.parameters)
+          console.log(`add workflow agent`,d.parameters)
           emit('refresh-node', d.id, workflowId, d.parameters, workflow_title)
         })
       })
