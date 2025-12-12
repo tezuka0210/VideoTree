@@ -98,7 +98,7 @@ function getNodeCategory(node) {
   // const isVideoMedia =
   //   typeof rawIVPath === 'string' &&
   //   (rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') || mediaType === 'video')
-  const isVideoMedia = (node.module_id=='TextGenerateVideo')||(node.module_id=='ImageGenerateVideo')||(node.module_id=='FLFrameToVideo')||(node.module_id=='TextToVideo')
+  const isVideoMedia = (node.module_id=='TextGenerateVideo')||(node.module_id=='ImageGenerateVideo')||(node.module_id=='FLFrameToVideo')||(node.module_id=='TextToVideo'||(node.module_id=='CameraControl'))
 
   const isImageMedia = hasMedia && !isAudioMedia && !isVideoMedia
 
@@ -1822,9 +1822,9 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .attr('class', 'io-divider');
 
   const params = d.parameters || {};
-  const isVideoNode = /Video/i.test(d.module_id);
+  const isVideoNode = /Video/i.test(d.module_id)||d.module_id=='CameraControl'||d.module_id=='FrameInterpolation';
   const orderedParamKeys = isVideoNode
-    ? ['batch_size', 'fps', 'time', 'height', 'width']
+    ? ['batch_size', 'fps', 'time', 'height', 'width','camera_pose']
     : ['batch_size', 'guidance', 'steps', 'height', 'width','high_threshold','low_threshold','position'];
 
   const paramPairs = orderedParamKeys
@@ -2379,7 +2379,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       const paramAliasMap = {
         'low_threshold': 'L-Thresh',    // 简写：低阈值
         'high_threshold': 'H-Thresh',  // 简写：高阈值
-        'batch_size': 'batch'             // 保留你原有的 batch_size 简写
+        'batch_size': 'batch',             // 保留你原有的 batch_size 简写
+        'camera_pose': 'camera'            // 新增：camera_pose 的简写（对应camera参数）
       };
       
       // 2. 优先用映射表的简写，没有则按原逻辑处理（下划线转空格）
@@ -2392,20 +2393,78 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .attr('class', 'input-param-label')
         .text(labelName);
 
-      const input = field.append('xhtml:input')
-        .attr('class', 'input-param-input node-input')
-        .attr('data-key', key)  // 核心：保留原始key，不影响参数提交逻辑
-        .attr('type', isNum ? 'number' : 'text')
-        .attr('value', val);
+      // ========== 新增：camera_pose参数下拉菜单逻辑（开始） ==========
+      if (key === 'camera_pose') {
+        // 定义camera的下拉选项列表
+        const cameraOptions = [
+          'Pan Up', 'Pan Down', 'Pan Left', 'Pan Right', 'Zoom In', 'Zoom Out', 'Anti Clockwise (ACW)', 'ClockWise (CW)'
+        ];
+        // 创建下拉选择框，使用和输入框相同的类名保证样式一致
+        const select = field.append('xhtml:select')
+          .attr('class', 'input-param-input node-input')
+          .attr('data-key', key)
+          .style('appearance', 'none')
+          .style('padding-right', '10px') // 给自定义三角留右侧空间
+          .style('position', 'relative')
+          .style('width', '100%'); // 保证宽度和输入框一致
+        // 添加下拉选项
+        cameraOptions.forEach(optionText => {
+          const option = select.append('xhtml:option')
+            .style('font-size', '14px')
+            .attr('value', optionText)
+            .text(optionText);
+          // 设置默认选中项（如果当前值匹配）
+          if (val === optionText) {
+            option.attr('selected', 'selected');
+          }
+        });
+        // 阻止事件冒泡，和输入框保持一致的交互
+        select.on('mousedown', ev => ev.stopPropagation());
 
-      // 可选优化：给 threshold 这类小数参数加步长（体验更好）
-      if (isNum && (key === 'low_threshold' || key === 'high_threshold'|| key === 'position')) {
-        input.attr('step', '0.01')  // 步长0.1，适配0.1/0.8这类值
-            .attr('min', '0.0')
-            .attr('max', '1.0'); // 阈值通常0-1之间，可按需调整
+        // ========== 新增：自定义下拉三角（解决尺寸和显示问题） ==========
+        const customTriangle = field.append('xhtml:span')
+          .attr('class', 'custom-select-triangle')
+          // 1. 调整三角尺寸：设置字体大小（可自行修改，比如10px）
+          .style('font-size', '8px')
+          // 2. 默认隐藏三角
+          .style('display', 'none')
+          // 3. 定位到下拉菜单右侧
+          .style('position', 'absolute')
+          .style('right', '8px')
+          .style('top', '50%')
+          .style('transform', 'translateY(-50%)')
+          // 4. 鼠标事件穿透，不影响下拉菜单点击
+          .style('pointer-events', 'none')
+          // 5. 三角符号（和原有一致）
+          .text('▾');
+
+        // ========== 新增：鼠标悬停/离开下拉菜单时控制三角显示/隐藏 ==========
+        // 给select添加鼠标进入事件
+        select.on('mouseenter', () => {
+          customTriangle.style('display', 'inline-block');
+        });
+        // 给select添加鼠标离开事件
+        select.on('mouseleave', () => {
+          customTriangle.style('display', 'none');
+        });
+      } else {
+        // ========== 原有输入框逻辑（保留不变） ==========
+        const input = field.append('xhtml:input')
+          .attr('class', 'input-param-input node-input')
+          .attr('data-key', key)  // 核心：保留原始key，不影响参数提交逻辑
+          .attr('type', isNum ? 'number' : 'text')
+          .attr('value', val);
+
+        // 可选优化：给 threshold 这类小数参数加步长（体验更好）
+        if (isNum && (key === 'low_threshold' || key === 'high_threshold'|| key === 'position')) {
+          input.attr('step', '0.01')  // 步长0.1，适配0.1/0.8这类值
+              .attr('min', '0.0')
+              .attr('max', '1.0'); // 阈值通常0-1之间，可按需调整
+        }
+
+        input.on('mousedown', ev => ev.stopPropagation());
       }
-
-      input.on('mousedown', ev => ev.stopPropagation());
+      // ========== 新增：camera_pose参数下拉菜单逻辑（结束） ==========
     });
 
     // 点击 header 折叠 / 展开

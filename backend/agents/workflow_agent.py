@@ -6,11 +6,12 @@ from .state import AgentState
 WORKFLOW_METADATA = {
     "ImageGenerateImage_Basic.json": "General image-to-image generation. Use ONLY for fusion, modification of images (no line art focus).",
     "ImageGenerateImage_Canny.json": "Specialized image-to-image generation. Use ONLY for generating images from line draft (no fusion/modification).",
-    "ImageCanny.json": "Generates line art by extracting edge maps (serves as the basis for ImageGenerateImage_Canny.json).",
+    "ImageCanny.json": "Generates line art by extracting edge maps.",
     "LayerStacking.json": "Layers one object onto another image. Use ONLY for stacking (no fusion, no line art focus).",
     "TextToAudio.json": "Generates AUDIO, SPEECH, or NARRATION. **High Priority** if user mentions 'narration', 'voice', 'say', 'speak'.",
     "TextGenerateImage.json": "Generates STATIC IMAGES from text. Use for visual descriptions. Do NOT use for narration/audio.",
     "TextGenerateVideo.json": "Generates VIDEO/ANIMATION from text.",
+    "ImageGenerateVideo.json":"Generates VIDEO/ANIMATION from image.",
     "FLFrameToVideo.json":"Determine the beginning and end frames of the video and generate the video"
 }
 

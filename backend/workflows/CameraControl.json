@@ -29,7 +29,7 @@
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
-      "title":"KSamplerAdvanced2"
+      "title": "KSamplerAdvanced2"
     }
   },
   "72": {
@@ -47,7 +47,6 @@
       "filename_prefix": "video/ComfyUI_CameraControl",
       "format": "auto",
       "codec": "auto",
-      "video-preview": "",
       "video": [
         "83",
         0
@@ -83,7 +82,7 @@
   },
   "76": {
     "inputs": {
-      "shift": 8.000000000000002,
+      "shift": 8,
       "model": [
         "88",
         0
@@ -223,7 +222,7 @@
     "inputs": {
       "fps": 16,
       "images": [
-        "82",
+        "91",
         0
       ]
     },
@@ -254,11 +253,11 @@
   },
   "87": {
     "inputs": {
-      "camera_pose": "ClockWise (CW)",
-      "width": 1024,
-      "height": 512,
-      "length": 81,
-      "speed": 0.5,
+      "camera_pose": "Anti Clockwise (ACW)",
+      "width": 1280,
+      "height": 720,
+      "length": 49,
+      "speed": 0.3,
       "fx": 0.5,
       "fy": 0.5,
       "cx": 0.5,
@@ -295,6 +294,24 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "91": {
+    "inputs": {
+      "ckpt_name": "rife47.pth",
+      "clear_cache_after_n_frames": 10,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": true,
+      "scale_factor": 1,
+      "frames": [
+        "82",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE VFI (recommend rife47 and rife49)"
     }
   }
 }

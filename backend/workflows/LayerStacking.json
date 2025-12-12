@@ -70,7 +70,7 @@
       "method": "lanczos",
       "round_to_multiple": "8",
       "scale_to_side": "height",
-      "scale_to_length": 650,
+      "scale_to_length": 720,
       "background_color": "#000000",
       "image": [
         "5",

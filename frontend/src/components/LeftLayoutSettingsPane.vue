@@ -256,7 +256,7 @@ const applySettings = () => {
   min-height: 0;
   overflow-y: hidden;
   padding: 10px;
-  gap: 2px; /* 稍微压缩垂直间距 */
+  gap: 4px; /* 稍微压缩垂直间距 */
   display: flex;
   flex-direction: column;
 }
@@ -377,6 +377,7 @@ const applySettings = () => {
 .color-hex {
   font-size: 12px;
   color: #4b5563;
+  width: 80px;
 }
 
 /* 底部按钮 */
@@ -418,7 +419,7 @@ const applySettings = () => {
 
 /* ✅ 只拉开 Vertical Spacing 和第一个颜色行之间的距离 */
 .color-row-first {
-  margin-top: 2px; /* 建议 4–8px，你现在这个 UI 用 6px 很合适 */
+  margin-top: 15px; /* 建议 4–8px，你现在这个 UI 用 6px 很合适 */
 }
 
 </style>
