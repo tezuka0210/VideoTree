@@ -12,7 +12,8 @@ WORKFLOW_METADATA = {
     "TextGenerateImage.json": "Generates STATIC IMAGES from text. Use for visual descriptions. Do NOT use for narration/audio.",
     "TextGenerateVideo.json": "Generates VIDEO/ANIMATION from text.",
     "ImageGenerateVideo.json":"Generates VIDEO/ANIMATION from image.",
-    "FLFrameToVideo.json":"Determine the beginning and end frames of the video and generate the video"
+    "FLFrameToVideo.json":"Determine the beginning and end frames of the video and generate the video",
+    "CameraControl.json": "Control the direction of camera movement"
 }
 
 def format_workflow_list(file_list):

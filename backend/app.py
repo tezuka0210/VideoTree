@@ -835,6 +835,7 @@ def create_node():
     workflow = None
     final_module_id = module_id_from_frontend # 最终使用的模块ID
     image_filenames = {} # 用于存储需要注入的文件名 { "node_title": "filename.png" }
+    video_filenames = {}
 
     try:
         # --- 根据输入情况决定加载哪个工作流和处理输入 ---
@@ -971,7 +972,7 @@ def create_node():
                 image2_filename = get_input_image_filenames_from_db(node_id)[1]
                 image_filenames["LoadStartImage"] = image1_filename
                 image_filenames["LoadLastImage"] = image2_filename 
-            if(module_id_from_frontend == 'LayerStacking'):
+            elif(module_id_from_frontend == 'LayerStacking'):
                 final_module_id = module_id_from_frontend 
                 workflow = load_workflow(final_module_id)
                 if workflow is None: raise ValueError(f"未找到 LayerStacking 工作流 '{final_module_id}.json'")
@@ -1052,8 +1053,11 @@ def create_node():
                 image_filename = get_input_image_filenames_from_db(node_id)[0]
                 image_filenames["LoadImage"] = image_filename
                 print(f"    - 输入图: {image_filename}")
+            elif final_module_id in ['FrameInterpolation']:
+                image_filename = get_input_image_filenames_from_db(node_id)[0]
+                video_filenames["LoadVideo"] = image_filename
             else:
-                 print("    - 当前模块不需要父节点图像输入。")
+                print("    - 当前模块不需要父节点图像输入。")
 
 
         # 情况0: 没有父节点 -> 文生图/文生视频 或 根节点创建
@@ -1078,6 +1082,14 @@ def create_node():
             else:
                 print(f"警告：在工作流 '{final_module_id}.json' 中未找到标题为 '{node_title}' 的节点用于注入文件名。")
 
+        # --- 注入视频文件名到工作流 ---
+        for node_title, filename in video_filenames.items():
+            target_node_id = find_node_id_by_title(workflow, node_title)
+            if target_node_id:
+                workflow[target_node_id]["inputs"]["file"] = filename
+                print(f"    - 已将文件名 '{filename}' 注入到节点 '{node_title}' (ID: {target_node_id})。")
+            else:
+                print(f"警告：在工作流 '{final_module_id}.json' 中未找到标题为 '{node_title}' 的节点用于注入文件名。")
 
         # --- 动态修改工作流 ---
         isVideo = (final_module_id in ['TextGenerateVideo', 'ImageGenerateVideo', 'FLFrameToVideo','CameraControl'])
@@ -1535,8 +1547,19 @@ if __name__ == '__main__':
     # 初始化时可以创建一个默认的树/项目
     if not database.get_tree_as_json(1):
         tree_id = database.create_tree("我的第一个项目")
-        database.add_node(tree_id, None, "Init", {"description": "项目根节点"})
+        # 生成唯一node_id（使用uuid）
+        init_node_id = str(uuid.uuid4())
+        # 正确调用add_node，补充所有必填参数
+        database.add_node(
+            node_id=init_node_id,          # 新增：节点唯一ID
+            tree_id=tree_id,               # 所属树ID
+            parent_ids=None,               # 无父节点（根节点）
+            module_id="Init",              # 模块ID
+            parameters={"description": "项目根节点"},  # 参数（必填）
+            title="Initial Node"           # 标题（必填，之前缺失）
+        )
         print(f"已创建默认项目，ID为: {tree_id}")
+
 
     app.run(host='0.0.0.0', port=5005, debug=True)
 

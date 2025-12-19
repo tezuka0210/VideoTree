@@ -13,7 +13,7 @@
 
         <!-- 新建按钮 - 添加点击状态绑定 -->
         <button
-          @click="createNewSession; isNewSessionBtnClicked = true"
+          @click="() => { createNewSession(); isNewSessionBtnClicked = true; }"
           type="button"
           class="new-session-btn"
           :class="{ 'clicked': isNewSessionBtnClicked }"
@@ -96,6 +96,7 @@ function createNewSession() {
     title: 'New Session'
   })
   currentSessionId.value = newId
+  console.log(`createNewSession`,sessions.value)
   
   // 滚动到顶部
   setTimeout(() => {

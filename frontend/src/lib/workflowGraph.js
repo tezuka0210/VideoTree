@@ -98,7 +98,7 @@ function getNodeCategory(node) {
   // const isVideoMedia =
   //   typeof rawIVPath === 'string' &&
   //   (rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') || mediaType === 'video')
-  const isVideoMedia = (node.module_id=='TextGenerateVideo')||(node.module_id=='ImageGenerateVideo')||(node.module_id=='FLFrameToVideo')||(node.module_id=='TextToVideo'||(node.module_id=='CameraControl'))
+  const isVideoMedia = (node.module_id=='TextGenerateVideo')||(node.module_id=='ImageGenerateVideo')||(node.module_id=='FLFrameToVideo')||(node.module_id=='TextToVideo'||(node.module_id=='CameraControl')||(node.module_id=='FrameInterpolation'))
 
   const isImageMedia = hasMedia && !isAudioMedia && !isVideoMedia
 
@@ -2280,6 +2280,34 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   const imageSection = left.append('xhtml:div')
     .attr('class', 'input-section');
 
+  // 【新增】定义图片和视频的扩展名（小写），用于判断类型
+  const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+  const VIDEO_EXTS = ['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
+
+  // 【新增】判断URL是图片还是视频的工具函数（不改动原有逻辑，仅新增）
+  const getMediaTypeFromUrl = (url) => {
+    // 处理带参数的URL（如 /view?filename=xxx.mp4）
+    const urlObj = new URL(url, window.location.origin);
+    let filename = '';
+    // 优先获取URL参数中的filename（和你后端的URL逻辑匹配）
+    if (urlObj.searchParams.has('filename')) {
+      filename = urlObj.searchParams.get('filename') || '';
+      // 解码URL中的文件名（处理空格、特殊字符）
+      filename = decodeURIComponent(filename);
+    } else {
+      // 兼容普通URL的情况
+      filename = urlObj.pathname.split('/').pop() || '';
+    }
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    if (IMAGE_EXTS.includes(ext)) {
+      return 'image';
+    } else if (VIDEO_EXTS.includes(ext)) {
+      return 'video';
+    }
+    // 未知类型默认按图片处理
+    return 'image';
+  };
+
   const hasImages = inputImages.length > 0;
   let imagesCollapsed = false;
   let grid = null;
@@ -2301,10 +2329,12 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('color', hasImages ? '#4b5563' : '#d1d5db')
     .style('cursor', hasImages ? 'pointer' : 'default');
 
+  // 【保留原有】小标题仍为 'Images'，不修改
   imageHeader.append('xhtml:span')
     .attr('class', 'prompt-section-title')
     .text('Images');
 
+  // 【保留原有】计数逻辑不变
   imageHeader.append('xhtml:span')
     .attr('class', 'prompt-count')
     .text(`(${inputImages.length})`);
@@ -2315,6 +2345,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
     grid = imageSection.append('xhtml:div')
       .attr('class', 'input-images-grid')
+      // 【保留原有】所有布局样式不变
       .style('display', 'flex')
       .style('flex-wrap', 'nowrap')
       .style('gap', '4px')
@@ -2322,31 +2353,52 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       .style('margin-top', '2px');
 
     shownImages.forEach((url, idx) => {
+      // 【新增】获取当前URL的媒体类型（image/video）
+      const mediaType = getMediaTypeFromUrl(url);
+
       const thumbWrapper = grid.append('xhtml:div')
         .attr('class', 'input-image-thumb')
-        // ⭐ 单张图：铺满整行；两张图：各占一半
+        // 【保留原有】布局样式完全不变
         .style('flex', imgCount === 1 ? '1 1 100%' : '1 1 0')
         .style('min-width', imgCount === 1 ? '0' : '50%')
-        .style('height', '56px')       // 高度你可以按需要调，比如 56 / 60
+        .style('height', '56px')
         .style('border-radius', '4px')
         .style('overflow', 'hidden')
         .on('mousedown', ev => ev.stopPropagation())
         .on('click', ev => {
           ev.stopPropagation();
-          emit('open-preview', url, 'image');
+          // 【优化】预览时传递正确的媒体类型（不影响原有布局，仅优化预览逻辑）
+          emit('open-preview', url, mediaType);
         });
 
-      thumbWrapper.append('xhtml:img')
-        .attr('src', url)
-        .attr('alt', 'Input image')
-        // ⭐ 关键：让图片填满父容器宽度，保持比例裁剪
-        .style('width', '100%')
-        .style('height', '100%')
-        .style('object-fit', 'cover')
-        .style('display', 'block');
+      // 【核心修改】根据类型动态渲染img或video，保留原有样式
+      if (mediaType === 'image') {
+        // 【保留原有】图片的渲染逻辑和样式完全不变
+        thumbWrapper.append('xhtml:img')
+          .attr('src', url)
+          .attr('alt', 'Input image')
+          .style('width', '100%')
+          .style('height', '100%')
+          .style('object-fit', 'cover')
+          .style('display', 'block');
+      } else if (mediaType === 'video') {
+        // 【新增】视频的渲染逻辑，样式和图片完全一致，添加自动播放属性
+        thumbWrapper.append('xhtml:video')
+          .attr('src', url)
+          .attr('alt', 'Input video')
+          // 【关键】配置视频自动播放（浏览器要求autoplay需配合muted）
+          .attr('autoplay', true) // 自动播放
+          .attr('muted', true)    // 静音（必加，否则多数浏览器会阻止自动播放）
+          .attr('loop', true)     // 循环播放（可选，根据需求调整）
+          .attr('playsinline', true) // 内联播放（移动端兼容）
+          // 【保留原有】样式和图片完全一致，保证布局不变
+          .style('width', '100%')
+          .style('height', '100%')
+          .style('object-fit', 'cover')
+          .style('display', 'block');
+      }
     });
   }
-
 
   /* ---------- Parameters ---------- */
   if (paramPairs.length) {
@@ -3034,7 +3086,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
   // 隐藏的 file input
   const hiddenInput = imgSection.append('xhtml:input')
     .attr('type', 'file')
-    .attr('accept', 'image/*')
+    .attr('accept', 'image/*, video/*')
     .attr('multiple', true)
     .style('display', 'none')
     .on('change', function () {

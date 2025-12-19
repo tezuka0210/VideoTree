@@ -91,7 +91,7 @@
       "cfg": 1,
       "sampler_name": "uni_pc",
       "scheduler": "simple",
-      "denoise": 0.10000000000000002,
+      "denoise": 0.05000000000000002,
       "model": [
         "36",
         0
